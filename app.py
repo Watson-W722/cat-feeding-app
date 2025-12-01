@@ -12,14 +12,16 @@ import uuid
 # 但為了電腦版也不錯，我們維持 wide，靠內部排版來控制
 st.set_page_config(page_title="大文餵食紀錄", page_icon="🐱", layout="wide")
 
-# --- 連線設定 (維持不變) ---
+# --- 連線設定 (雲端版) ---
 @st.cache_resource
 def init_connection():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    # creds = ServiceAccountCredentials.from_json_keyfile_name("service_account.json", scope)
-    # 從 streamlit Secrets 讀取
+    
+    # 改成從 Streamlit 的 Secrets 讀取，而不是讀檔案
+    # 注意：這裡的 "gcp_service_account" 要跟您在 Secrets 裡設定的標題一樣
     creds_dict = st.secrets["gcp_service_account"]
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+    
     client = gspread.authorize(creds)
     return client
 
