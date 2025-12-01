@@ -95,7 +95,7 @@ with st.sidebar:
         df_today['Net_Quantity'] = pd.to_numeric(df_today['Net_Quantity'], errors='coerce').fillna(0)
         df_today['Cal_Sub'] = pd.to_numeric(df_today['Cal_Sub'], errors='coerce').fillna(0)
         
-        food_mask = ~df_today['Category_Copy'].isin(['水', '藥品', '保養品', '剩食'])
+        food_mask = ~df_today['Category'].isin(['水', '藥品', '保養品', '剩食'])
         day_food_weight = df_today[food_mask]['Net_Quantity'].sum()
         day_calories = df_today['Cal_Sub'].sum()
         
@@ -103,7 +103,7 @@ with st.sidebar:
         c1.metric("🔥 總熱量", f"{day_calories:.0f}")
         c2.metric("🍖 總食量", f"{day_food_weight:.0f}g")
         
-        meds = df_today[df_today['Category_Copy'].isin(['藥品', '保養品'])]['Item_Name'].unique()
+        meds = df_today[df_today['Category'].isin(['藥品', '保養品'])]['Item_Name'].unique()
         if len(meds) > 0:
             st.write("💊 已服用：")
             for m in meds:
