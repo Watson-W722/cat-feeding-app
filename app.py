@@ -36,6 +36,16 @@ except Exception as e:
 
 # --- 讀取資料 ---
 @st.cache_data(ttl=60)
+
+# --- 小工具：確保數據是數字 ---
+def safe_float(value):
+    try:
+        # 嘗試轉成浮點數
+        return float(value)
+    except (ValueError, TypeError):
+        # 如果失敗（例如是空字串、文字），就回傳 0.0
+        return 0.0
+
 def load_data():
     data = sheet_db.get_all_records()
     return pd.DataFrame(data)
@@ -123,11 +133,23 @@ with st.container(border=True):
         if scale_reading > 0:
             item_id = item_map.get(item_name, "")
             category = cat_map.get(item_name, "")
+            # 營養計算 (加裝 safe_float 防護罩)
+            cal_val = safe_float(cal_map.get(item_name, 0))
+            prot_val = safe_float(prot_map.get(item_name, 0))
+            fat_val = safe_float(fat_map.get(item_name, 0))
+            phos_val = safe_float(phos_map.get(item_name, 0))
+
+            cal = net_weight * cal_val / 100
+            prot = net_weight * prot_val / 100
+            fat = net_weight * fat_val / 100
+            phos = net_weight * phos_val / 100            
+            '''
             # 營養計算
             cal = net_weight * cal_map.get(item_name, 0) / 100
             prot = net_weight * prot_map.get(item_name, 0) / 100
             fat = net_weight * fat_map.get(item_name, 0) / 100
             phos = net_weight * phos_map.get(item_name, 0) / 100
+            '''
 
             st.session_state.cart.append({
                 "Category": category,
