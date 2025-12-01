@@ -143,13 +143,13 @@ with st.container(border=True):
             prot = net_weight * prot_val / 100
             fat = net_weight * fat_val / 100
             phos = net_weight * phos_val / 100            
-            '''
+            
             # 營養計算
-            cal = net_weight * cal_map.get(item_name, 0) / 100
-            prot = net_weight * prot_map.get(item_name, 0) / 100
-            fat = net_weight * fat_map.get(item_name, 0) / 100
-            phos = net_weight * phos_map.get(item_name, 0) / 100
-            '''
+            # cal = net_weight * cal_map.get(item_name, 0) / 100
+            # prot = net_weight * prot_map.get(item_name, 0) / 100
+            # fat = net_weight * fat_map.get(item_name, 0) / 100
+            # phos = net_weight * phos_map.get(item_name, 0) / 100
+            
 
             st.session_state.cart.append({
                 "Category": category,
