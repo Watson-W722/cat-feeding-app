@@ -158,46 +158,7 @@ with st.sidebar:
     st.caption(f"將記錄為：{record_time_str}")
     st.caption("輸入數字後，點擊空白處即可生效")
 
-# --- 主畫面區塊 1 ---
-recorded_meals = []
-df_today = pd.DataFrame()
-
-if not df_log.empty:
-    df_today = df_log[df_log['Date'] == str_date_filter].copy()
-    if not df_today.empty:
-        recorded_meals = df_today['Meal_Name'].unique().tolist()
-
-meal_options = ["第一餐", "第二餐", "第三餐", "第四餐", "第五餐", "點心"]
-
-with st.expander("🥣 餐別與碗重設定 (點擊收合)", expanded=True):
-    c_meal, c_bowl = st.columns(2)
-    with c_meal:
-        def meal_formatter(m):
-            return f"{m} (已記)" if m in recorded_meals else m
-        meal_name = st.selectbox("🍽️ 餐別", meal_options, format_func=meal_formatter)
-    
-    last_bowl = 30.0
-    df_meal = pd.DataFrame()
-    
-    if not df_today.empty:
-        mask_meal = (df_today['Meal_Name'] == meal_name)
-        df_meal = df_today[mask_meal]
-        if not df_meal.empty:
-            try:
-                last_bowl = float(df_meal.iloc[-1]['Bowl_Weight'])
-            except:
-                pass
-    
-    with c_bowl:
-        bowl_weight = st.number_input("🥣 碗重 (g)", value=last_bowl, step=0.1, format="%.1f")
-
-    if not df_meal.empty:
-        with st.expander(f"📜 查看 {meal_name} 已記錄明細"):
-            view_df = df_meal[['Item_Name', 'Net_Quantity', 'Cal_Sub']].copy()
-            view_df.columns = ['品名', '數量/重量', '熱量']
-            st.dataframe(view_df, use_container_width=True, hide_index=True)
-
-# --- 主畫面區塊 2：數據 ---
+# --- 主畫面區塊 1：數據 ---
 day_cal = 0.0
 day_weight = 0.0
 meal_cal_sum = 0.0
@@ -239,6 +200,46 @@ st.info(
     f"💊 **保養**: {supp_str}\n\n"
     f"💊 **藥品**: {med_str}"
 )
+
+# --- 主畫面區塊 2 ---
+recorded_meals = []
+df_today = pd.DataFrame()
+
+if not df_log.empty:
+    df_today = df_log[df_log['Date'] == str_date_filter].copy()
+    if not df_today.empty:
+        recorded_meals = df_today['Meal_Name'].unique().tolist()
+
+meal_options = ["第一餐", "第二餐", "第三餐", "第四餐", "第五餐", "第六餐", "第七餐", "第八餐", "第九餐", "第十餐"]
+
+with st.expander("🥣 餐別與碗重設定 (點擊收合)", expanded=True):
+    c_meal, c_bowl = st.columns(2)
+    with c_meal:
+        def meal_formatter(m):
+            return f"{m} (已記)" if m in recorded_meals else m
+        meal_name = st.selectbox("🍽️ 餐別", meal_options, format_func=meal_formatter)
+    
+    last_bowl = 30.0
+    df_meal = pd.DataFrame()
+    
+    if not df_today.empty:
+        mask_meal = (df_today['Meal_Name'] == meal_name)
+        df_meal = df_today[mask_meal]
+        if not df_meal.empty:
+            try:
+                last_bowl = float(df_meal.iloc[-1]['Bowl_Weight'])
+            except:
+                pass
+    
+    with c_bowl:
+        bowl_weight = st.number_input("🥣 碗重 (g)", value=last_bowl, step=0.1, format="%.1f")
+
+    if not df_meal.empty:
+        with st.expander(f"📜 查看 {meal_name} 已記錄明細"):
+            view_df = df_meal[['Item_Name', 'Net_Quantity', 'Cal_Sub']].copy()
+            view_df.columns = ['品名', '數量/重量', '熱量']
+            st.dataframe(view_df, use_container_width=True, hide_index=True)
+
 
 # --- 主畫面區塊 3：操作區 ---
 
