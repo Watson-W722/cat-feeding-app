@@ -1,4 +1,4 @@
-# 🚀 Python 程式碼 V3.7 (時間選擇優化版)
+# 🚀 Python 程式碼 V3.8 (快速輸入時間版)
 
 import streamlit as st
 import pandas as pd
@@ -16,6 +16,24 @@ def safe_float(value):
         return float(value)
     except (ValueError, TypeError):
         return 0.0
+
+# [新增] 時間格式化小工具
+# 輸入 "0639" -> 回傳 "06:39"
+# 輸入 "639"  -> 回傳 "06:39"
+# 輸入 "06:39" -> 回傳 "06:39"
+def format_time_str(t_str):
+    t_str = str(t_str).strip().replace(":", "").replace("：", "") # 去除冒號與空白
+    
+    # 處理 3碼 (639 -> 0639)
+    if len(t_str) == 3 and t_str.isdigit():
+        t_str = "0" + t_str
+        
+    # 處理 4碼 (0639 -> 06:39)
+    if len(t_str) == 4 and t_str.isdigit():
+        return f"{t_str[:2]}:{t_str[2:]}"
+    
+    # 如果格式不對 (例如亂打)，回傳原值讓使用者檢查，或是回傳當下時間
+    return t_str if ":" in str(t_str) else datetime.now().strftime("%H:%M")
 
 # --- 連線設定 (雲端版) ---
 @st.cache_resource
@@ -49,7 +67,7 @@ def load_data():
 
 df_items, df_log = load_data()
 
-# 初始化與 Mapping
+# Mapping 初始化
 if not df_items.empty:
     df_items.columns = [c.strip() for c in df_items.columns]
     item_map = dict(zip(df_items['Item_Name'], df_items['ItemID']))
@@ -69,17 +87,17 @@ else:
 st.title("🐱 大文餵食紀錄")
 
 with st.sidebar:
-    st.header("⚙️ 日期設定")
+    st.header("⚙️ 設定")
     record_date = st.date_input("📅 日期", datetime.now())
     str_date_filter = record_date.strftime("%Y/%m/%d")
     
-    # 這裡已經是 Time Picker 了，使用者可以直接滑動選擇
-    record_time = st.time_input("🕒 時間", datetime.now())
+    # 左側這裡維持時間選擇器，但改為 step=60 (1分鐘)，方便精確選擇
+    record_time = st.time_input("🕒 時間", datetime.now(), step=60)
     
-    st.caption("輸入數字後，點擊空白處即可生效")
+    st.caption("左側時間僅用於「新增品項」，完食時間請在右側獨立輸入")
 
 # ==========================================
-#      主畫面區塊 1：餐別設定
+#      主畫面區塊 1：餐別與碗重
 # ==========================================
 recorded_meals = []
 df_today = pd.DataFrame()
@@ -95,14 +113,11 @@ with st.expander("🥣 餐別與碗重設定 (點擊收合)", expanded=True):
     c_meal, c_bowl = st.columns(2)
     with c_meal:
         def meal_formatter(m):
-            if m in recorded_meals:
-                return f"{m} (已記)"
-            return m
+            return f"{m} (已記)" if m in recorded_meals else m
         meal_name = st.selectbox("🍽️ 餐別", meal_options, format_func=meal_formatter)
     
     last_bowl = 30.0
     df_meal = pd.DataFrame()
-    
     if not df_today.empty:
         mask_meal = (df_today['Meal_Name'] == meal_name)
         df_meal = df_today[mask_meal]
@@ -142,7 +157,6 @@ if not df_today.empty:
     if not df_meal.empty:
         df_meal['Cal_Sub'] = pd.to_numeric(df_meal['Cal_Sub'], errors='coerce').fillna(0)
         df_meal['Net_Quantity'] = pd.to_numeric(df_meal['Net_Quantity'], errors='coerce').fillna(0)
-        
         mask_meal_weight = ~df_meal['Category'].isin(['藥品', '保養品'])
         meal_weight_sum = df_meal[mask_meal_weight]['Net_Quantity'].sum()
         meal_cal_sum = df_meal['Cal_Sub'].sum()
@@ -213,10 +227,8 @@ with tab1:
         unit = unit_map.get(item_name, "g")
         
         c3, c4 = st.columns(2)
-        
         with c3:
             if 'scale_val' not in st.session_state: st.session_state.scale_val = 0.0
-            
             if unit in ["顆", "粒", "錠", "膠囊"]:
                 scale_reading = st.number_input(f"3. 數量 ({unit})", step=1.0, key="scale_val")
                 is_zeroed = True 
@@ -322,23 +334,29 @@ with tab1:
                 except Exception as e:
                     st.error(f"寫入失敗：{e}")
 
-# --- Tab 2: 完食 (Q: 時間選擇器優化) ---
+# --- Tab 2: 完食 (時間輸入優化) ---
 with tab2:
     st.info("紀錄完食時間，若有剩餘，請將剩食倒入新容器(或原碗)秤重")
     
-    # 這裡不使用 st.form，以便實現即時展開
-    # --- 時間選擇優化 ---
+    # 預設當下時間，格式為 4 碼字串 (0630)
+    default_now = datetime.now().strftime("%H%M")
+    
+    # 使用 Columns 來排版時間輸入
     c_t1, c_t2 = st.columns(2)
     with c_t1:
-        # 開始時間：預設為 Sidebar 設定的記錄時間
-        finish_start = st.time_input("開始吃", value=record_time)
+        # 輸入：開始時間
+        raw_start = st.text_input("開始時間 (如 0639)", value=default_now, key="t_start")
     with c_t2:
-        # 結束時間：預設為現在 (User 當下點開 App 的時間)
-        finish_end = st.time_input("吃完/記錄時間", value=datetime.now().time())
+        # 輸入：結束時間
+        raw_end = st.text_input("結束時間 (如 0700)", value=default_now, key="t_end")
     
-    # 自動組合成字串
-    finish_time_str = f"{finish_start.strftime('%H:%M')} - {finish_end.strftime('%H:%M')}"
-    st.caption(f"將記錄為：{finish_time_str}")
+    # 自動格式化並顯示預覽
+    fmt_start = format_time_str(raw_start)
+    fmt_end = format_time_str(raw_end)
+    finish_time_str = f"{fmt_start} - {fmt_end}"
+    
+    # 顯示預覽結果，讓使用者確認
+    st.caption(f"📝 將記錄為：**{finish_time_str}**")
 
     # 狀態選擇
     finish_type = st.radio("狀態", ["全部吃光 (盤光光)", "有剩餘 (需秤重)"], horizontal=True)
@@ -361,12 +379,10 @@ with tab2:
         if waste_gross > 0 or waste_tare > 0:
             if waste_net > 0:
                 st.warning(f"📉 實際剩餘淨重：{waste_net:.1f} g")
-                
                 if not df_meal.empty:
                     meal_foods = df_meal[df_meal['Net_Quantity'].apply(lambda x: safe_float(x)) > 0]
                     total_in_cal = meal_foods['Cal_Sub'].apply(safe_float).sum()
                     total_in_weight = meal_foods['Net_Quantity'].apply(safe_float).sum()
-                    
                     if total_in_weight > 0:
                         avg_density = total_in_cal / total_in_weight
                         waste_cal = waste_net * avg_density
@@ -374,7 +390,6 @@ with tab2:
             elif waste_gross > 0 and waste_net <= 0:
                 st.error("空重不能大於總重！")
 
-    # 紀錄按鈕
     if st.button("💾 記錄完食/剩餘", type="primary"):
         if finish_type == "有剩餘 (需秤重)" and waste_net <= 0:
             st.error("剩餘重量計算錯誤，請檢查輸入數值。")
