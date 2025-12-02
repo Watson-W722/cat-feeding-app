@@ -1,5 +1,3 @@
-# 🚀 Python 程式碼 V4.1 (無提示防跳動版)
-
 import streamlit as st
 import pandas as pd
 import gspread
@@ -25,13 +23,13 @@ def format_time_str(t_str):
         return f"{t_str[:2]}:{t_str[2:]}"
     return t_str if ":" in str(t_str) else datetime.now().strftime("%H:%M")
 
-# --- 連線設定 (雲端版) ---
+# --- [修正] 連線設定 (雲端版) ---
+# 這裡已經改回讀取 st.secrets，部署後不會再報錯
 @st.cache_resource
 def init_connection():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     
-    # 改成從 Streamlit 的 Secrets 讀取，而不是讀檔案
-    # 注意：這裡的 "gcp_service_account" 要跟您在 Secrets 裡設定的標題一樣
+    # 改成從 Streamlit 的 Secrets 讀取
     creds_dict = st.secrets["gcp_service_account"]
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
     
@@ -75,9 +73,6 @@ else:
 # ==========================================
 
 def add_to_cart_callback(bowl_w, last_ref_w, last_ref_n):
-    """
-    處理加入清單的邏輯，不回傳任何畫面元素，僅處理數據
-    """
     category = st.session_state.get('cat_select', '請選擇...')
     item_name = st.session_state.get('item_select', '請先選類別')
     scale_reading = st.session_state.get('scale_val', 0.0)
@@ -135,10 +130,6 @@ def add_to_cart_callback(bowl_w, last_ref_w, last_ref_n):
         "Unit": unit
     })
     
-    # [修正] 移除 st.toast，避免畫面跳動與干擾
-    # st.toast(f"✅ 已加入：{item_name} ({net_weight}{unit})")
-    
-    # 重置輸入框
     st.session_state.scale_val = 0.0
     st.session_state.check_zero = False
 
@@ -158,59 +149,59 @@ with st.sidebar:
     st.caption(f"將記錄為：{record_time_str}")
     st.caption("輸入數字後，點擊空白處即可生效")
 
-# --- 主畫面區塊 1：數據 ---
+# ----------------------------------------------------
+# [修正重點] 預先計算本日數據 (解決 NameError)
+# ----------------------------------------------------
+df_today = pd.DataFrame()
 day_cal = 0.0
 day_weight = 0.0
-meal_cal_sum = 0.0
-meal_weight_sum = 0.0
 supp_str = "無"
 med_str = "無"
-
-if not df_today.empty:
-    df_today['Cal_Sub'] = pd.to_numeric(df_today['Cal_Sub'], errors='coerce').fillna(0)
-    df_today['Net_Quantity'] = pd.to_numeric(df_today['Net_Quantity'], errors='coerce').fillna(0)
-    
-    mask_day_weight = ~df_today['Category'].isin(['藥品', '保養品', '水'])
-    day_weight = df_today[mask_day_weight]['Net_Quantity'].sum()
-    day_cal = df_today['Cal_Sub'].sum()
-
-    if not df_meal.empty:
-        df_meal['Cal_Sub'] = pd.to_numeric(df_meal['Cal_Sub'], errors='coerce').fillna(0)
-        df_meal['Net_Quantity'] = pd.to_numeric(df_meal['Net_Quantity'], errors='coerce').fillna(0)
-        mask_meal_weight = ~df_meal['Category'].isin(['藥品', '保養品'])
-        meal_weight_sum = df_meal[mask_meal_weight]['Net_Quantity'].sum()
-        meal_cal_sum = df_meal['Cal_Sub'].sum()
-
-    if 'Category' in df_today.columns:
-        df_supp = df_today[df_today['Category'] == '保養品']
-        if not df_supp.empty:
-            supp_counts = df_supp.groupby('Item_Name')['Net_Quantity'].sum()
-            supp_list = [f"{name}({int(val)})" for name, val in supp_counts.items()]
-            supp_str = "、".join(supp_list)
-        
-        df_med = df_today[df_today['Category'] == '藥品']
-        if not df_med.empty:
-            med_counts = df_med.groupby('Item_Name')['Net_Quantity'].sum()
-            med_list = [f"{name}({int(val)})" for name, val in med_counts.items()]
-            med_str = "、".join(med_list)
-
-st.info(
-    f"🔥 **本日**: {day_cal:.0f} kcal / {day_weight:.1f} g\n\n"
-    f"🍽️ **本餐**: {meal_cal_sum:.0f} kcal / {meal_weight_sum:.1f} g\n\n"
-    f"💊 **保養**: {supp_str}\n\n"
-    f"💊 **藥品**: {med_str}"
-)
-
-# --- 主畫面區塊 2 ---
-recorded_meals = []
-df_today = pd.DataFrame()
 
 if not df_log.empty:
     df_today = df_log[df_log['Date'] == str_date_filter].copy()
     if not df_today.empty:
-        recorded_meals = df_today['Meal_Name'].unique().tolist()
+        # 確保數值正確
+        df_today['Cal_Sub'] = pd.to_numeric(df_today['Cal_Sub'], errors='coerce').fillna(0)
+        df_today['Net_Quantity'] = pd.to_numeric(df_today['Net_Quantity'], errors='coerce').fillna(0)
+        
+        # 計算本日總重 (排除 藥品, 保養品, 水)
+        mask_day_weight = ~df_today['Category'].isin(['藥品', '保養品', '水'])
+        day_weight = df_today[mask_day_weight]['Net_Quantity'].sum()
+        
+        # 計算本日熱量
+        day_cal = df_today['Cal_Sub'].sum()
 
-meal_options = ["第一餐", "第二餐", "第三餐", "第四餐", "第五餐", "第六餐", "第七餐", "第八餐", "第九餐", "第十餐"]
+        # 統計保養品與藥品
+        if 'Category' in df_today.columns:
+            # 保養品
+            df_supp = df_today[df_today['Category'] == '保養品']
+            if not df_supp.empty:
+                supp_counts = df_supp.groupby('Item_Name')['Net_Quantity'].sum()
+                supp_list = [f"{name}({int(val)})" for name, val in supp_counts.items()]
+                supp_str = "、".join(supp_list)
+            
+            # 藥品
+            df_med = df_today[df_today['Category'] == '藥品']
+            if not df_med.empty:
+                med_counts = df_med.groupby('Item_Name')['Net_Quantity'].sum()
+                med_list = [f"{name}({int(val)})" for name, val in med_counts.items()]
+                med_str = "、".join(med_list)
+
+# ----------------------------------------------------
+# [修正重點] UI 區塊 1：Dashboard (使用佔位符技巧)
+# ----------------------------------------------------
+# 因為「本餐熱量」還不知道 (要等下面選完餐別才知道)，所以這裡先放一個空盒子
+dashboard_placeholder = st.empty()
+
+# ----------------------------------------------------
+# [修正重點] UI 區塊 2：餐別設定 (放在 Dashboard 下面)
+# ----------------------------------------------------
+recorded_meals = []
+if not df_today.empty:
+    recorded_meals = df_today['Meal_Name'].unique().tolist()
+
+meal_options = ["第一餐", "第二餐", "第三餐", "第四餐", "第五餐", "點心"]
 
 with st.expander("🥣 餐別與碗重設定 (點擊收合)", expanded=True):
     c_meal, c_bowl = st.columns(2)
@@ -240,8 +231,31 @@ with st.expander("🥣 餐別與碗重設定 (點擊收合)", expanded=True):
             view_df.columns = ['品名', '數量/重量', '熱量']
             st.dataframe(view_df, use_container_width=True, hide_index=True)
 
+# ----------------------------------------------------
+# [修正重點] 回頭填滿 Dashboard (因為現在有 meal_name 了)
+# ----------------------------------------------------
+meal_cal_sum = 0.0
+meal_weight_sum = 0.0
 
-# --- 主畫面區塊 3：操作區 ---
+if not df_meal.empty:
+    df_meal['Cal_Sub'] = pd.to_numeric(df_meal['Cal_Sub'], errors='coerce').fillna(0)
+    df_meal['Net_Quantity'] = pd.to_numeric(df_meal['Net_Quantity'], errors='coerce').fillna(0)
+    
+    mask_meal_weight = ~df_meal['Category'].isin(['藥品', '保養品'])
+    meal_weight_sum = df_meal[mask_meal_weight]['Net_Quantity'].sum()
+    meal_cal_sum = df_meal['Cal_Sub'].sum()
+
+# 將數據寫入最上方的空盒子
+dashboard_placeholder.info(
+    f"🔥 **本日**: {day_cal:.0f} kcal / {day_weight:.1f} g\n\n"
+    f"🍽️ **本餐**: {meal_cal_sum:.0f} kcal / {meal_weight_sum:.1f} g\n\n"
+    f"💊 **保養**: {supp_str}\n\n"
+    f"💊 **藥品**: {med_str}"
+)
+
+# ==========================================
+#      主畫面區塊 3：操作區 (維持原樣)
+# ==========================================
 
 if 'cart' not in st.session_state:
     st.session_state.cart = []
@@ -325,7 +339,6 @@ with tab1:
         if scale_reading_ui <= 0: btn_disabled = True
         if "異常" in calc_msg_disp: btn_disabled = True 
 
-        # 使用 callback，移除 st.toast
         st.button("⬇️ 加入清單", 
                   type="secondary", 
                   use_container_width=True, 
