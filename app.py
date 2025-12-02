@@ -1,6 +1,6 @@
-# 🚀 Python 程式碼 V4.0 (防跳動優化版)
+# 🚀 Python 程式碼 V4.1 (無提示防跳動版)
 
-import streamlit as st
+iimport streamlit as st
 import pandas as pd
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
@@ -72,43 +72,36 @@ else:
 
 # ==========================================
 #      邏輯函數區 (Callback Functions)
-#      這是解決畫面跳動的核心！
 # ==========================================
 
 def add_to_cart_callback(bowl_w, last_ref_w, last_ref_n):
     """
-    這個函數會在按鈕按下的瞬間執行，執行完才渲染畫面。
-    這樣可以確保輸入框清空，且畫面不亂跳。
+    處理加入清單的邏輯，不回傳任何畫面元素，僅處理數據
     """
-    # 從 session_state 讀取當下的輸入值
-    # 注意：我們使用 key 來獲取值
     category = st.session_state.get('cat_select', '請選擇...')
     item_name = st.session_state.get('item_select', '請先選類別')
     scale_reading = st.session_state.get('scale_val', 0.0)
     is_zeroed = st.session_state.get('check_zero', False)
     
-    # 基本檢查
     if category == "請選擇..." or item_name == "請先選類別" or scale_reading <= 0:
-        return # 條件不符，不做事
+        return
 
     unit = unit_map.get(item_name, "g")
     
-    # 計算淨重邏輯
     net_weight = 0.0
     db_scale_reading = scale_reading
     
     if unit in ["顆", "粒", "錠", "膠囊"]:
         net_weight = scale_reading
-        db_scale_reading = last_ref_w # 顆數不改變秤重讀數
+        db_scale_reading = last_ref_w 
     else:
         if is_zeroed:
             net_weight = scale_reading
         else:
             if scale_reading < last_ref_w:
-                return # 異常，不做事 (雖然按鈕已鎖，雙重保險)
+                return 
             net_weight = scale_reading - last_ref_w
 
-    # 準備資料
     item_id = item_map.get(item_name, "")
     cat_real = cat_map.get(item_name, "")
     
@@ -128,7 +121,6 @@ def add_to_cart_callback(bowl_w, last_ref_w, last_ref_n):
         fat = net_weight * fat_val / 100
         phos = net_weight * phos_val / 100
 
-    # 加入購物車
     st.session_state.cart.append({
         "Category": cat_real,
         "ItemID": item_id,
@@ -143,10 +135,10 @@ def add_to_cart_callback(bowl_w, last_ref_w, last_ref_n):
         "Unit": unit
     })
     
-    # 成功提示
-    st.toast(f"✅ 已加入：{item_name} ({net_weight}{unit})")
+    # [修正] 移除 st.toast，避免畫面跳動與干擾
+    # st.toast(f"✅ 已加入：{item_name} ({net_weight}{unit})")
     
-    # ★ 關鍵：直接在後台重置輸入框的值，不需要 st.rerun()
+    # 重置輸入框
     st.session_state.scale_val = 0.0
     st.session_state.check_zero = False
 
@@ -271,7 +263,7 @@ else:
 
 tab1, tab2 = st.tabs(["➕ 新增食物/藥品", "🏁 完食/紀錄剩餘"])
 
-# --- Tab 1: 新增 (改用 Callback 模式) ---
+# --- Tab 1: 新增 ---
 with tab1:
     with st.container(border=True):
         c1, c2 = st.columns(2)
@@ -287,30 +279,23 @@ with tab1:
                 filtered_items = df_items[df_items['Category'] == filter_cat]['Item_Name'].tolist()
 
         with c2:
-            # [修改] 加入 key="item_select"
             item_name = st.selectbox("2. 品名", filtered_items if filtered_items else ["請先選類別"], key="item_select")
 
         unit = unit_map.get(item_name, "g")
         
         c3, c4 = st.columns(2)
-        
         with c3:
-            # key="scale_val"
             if 'scale_val' not in st.session_state: st.session_state.scale_val = 0.0
             
             if unit in ["顆", "粒", "錠", "膠囊"]:
                 scale_reading_ui = st.number_input(f"3. 數量 ({unit})", step=1.0, key="scale_val")
-                # 介面顯示用邏輯
                 is_zeroed_ui = True 
             else:
                 scale_reading_ui = st.number_input("3. 秤重讀數 (g)", step=0.1, format="%.1f", key="scale_val")
-                
                 st.caption(f"前筆: {last_ref_weight} g ({last_ref_name})")
-                # key="check_zero"
                 is_zeroed_ui = st.checkbox("⚖️ 已歸零 / 單獨秤重", value=False, key="check_zero")
 
         with c4:
-            # 這裡只是單純顯示計算結果給使用者看，實際寫入邏輯在 callback
             net_weight_disp = 0.0
             calc_msg_disp = "請輸入"
             if scale_reading_ui > 0:
@@ -339,13 +324,12 @@ with tab1:
         if scale_reading_ui <= 0: btn_disabled = True
         if "異常" in calc_msg_disp: btn_disabled = True 
 
-        # [核心修改] 使用 on_click 回呼函數，不使用 if st.button
+        # 使用 callback，移除 st.toast
         st.button("⬇️ 加入清單", 
                   type="secondary", 
                   use_container_width=True, 
                   disabled=btn_disabled,
                   on_click=add_to_cart_callback,
-                  # 傳入必要的參數 (碗重, 上一筆重, 上一筆名)
                   args=(bowl_weight, last_ref_weight, last_ref_name)
         )
 
@@ -376,7 +360,7 @@ with tab1:
                     st.toast("✅ 寫入成功！")
                     st.session_state.cart = []
                     load_data.clear()
-                    st.rerun() # 這裡需要 rerun 更新 dashboard
+                    st.rerun()
                 except Exception as e:
                     st.error(f"寫入失敗：{e}")
 
@@ -434,7 +418,6 @@ with tab2:
             st.error("剩餘重量計算錯誤，請檢查輸入數值。")
         else:
             str_date = record_date.strftime("%Y/%m/%d")
-            # 完食使用結束時間
             str_time_finish = f"{fmt_end}:00"
             timestamp = f"{str_date} {str_time_finish}"
             
