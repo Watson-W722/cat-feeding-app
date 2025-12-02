@@ -1,4 +1,4 @@
-# 🚀 Python 程式碼 V3.8 (快速輸入時間版)
+# 🚀 Python 程式碼 V3.9 (全域時間輸入優化版)
 
 import streamlit as st
 import pandas as pd
@@ -17,22 +17,13 @@ def safe_float(value):
     except (ValueError, TypeError):
         return 0.0
 
-# [新增] 時間格式化小工具
-# 輸入 "0639" -> 回傳 "06:39"
-# 輸入 "639"  -> 回傳 "06:39"
-# 輸入 "06:39" -> 回傳 "06:39"
+# 時間格式化小工具 (輸入 0618 -> 06:18)
 def format_time_str(t_str):
-    t_str = str(t_str).strip().replace(":", "").replace("：", "") # 去除冒號與空白
-    
-    # 處理 3碼 (639 -> 0639)
+    t_str = str(t_str).strip().replace(":", "").replace("：", "")
     if len(t_str) == 3 and t_str.isdigit():
         t_str = "0" + t_str
-        
-    # 處理 4碼 (0639 -> 06:39)
     if len(t_str) == 4 and t_str.isdigit():
         return f"{t_str[:2]}:{t_str[2:]}"
-    
-    # 如果格式不對 (例如亂打)，回傳原值讓使用者檢查，或是回傳當下時間
     return t_str if ":" in str(t_str) else datetime.now().strftime("%H:%M")
 
 # --- 連線設定 (雲端版) ---
@@ -91,10 +82,16 @@ with st.sidebar:
     record_date = st.date_input("📅 日期", datetime.now())
     str_date_filter = record_date.strftime("%Y/%m/%d")
     
-    # 左側這裡維持時間選擇器，但改為 step=60 (1分鐘)，方便精確選擇
-    record_time = st.time_input("🕒 時間", datetime.now(), step=60)
+    # --- [修改重點] 左側時間輸入優化 ---
+    # 預設為當下時間 (4碼字串)
+    default_sidebar_time = datetime.now().strftime("%H%M")
+    raw_record_time = st.text_input("🕒 時間 (如 0618)", value=default_sidebar_time)
     
-    st.caption("左側時間僅用於「新增品項」，完食時間請在右側獨立輸入")
+    # 自動格式化並顯示預覽
+    record_time_str = format_time_str(raw_record_time)
+    st.caption(f"將記錄為：{record_time_str}")
+    
+    st.caption("輸入數字後，點擊空白處即可生效")
 
 # ==========================================
 #      主畫面區塊 1：餐別與碗重
@@ -118,6 +115,7 @@ with st.expander("🥣 餐別與碗重設定 (點擊收合)", expanded=True):
     
     last_bowl = 30.0
     df_meal = pd.DataFrame()
+    
     if not df_today.empty:
         mask_meal = (df_today['Meal_Name'] == meal_name)
         df_meal = df_today[mask_meal]
@@ -312,12 +310,14 @@ with tab1:
             with st.spinner("寫入中..."):
                 rows = []
                 str_date = record_date.strftime("%Y/%m/%d")
-                now_time = datetime.now().strftime("%H:%M:%S")
-                timestamp = f"{str_date} {now_time}"
+                
+                # [修改] 使用 Sidebar 的時間設定
+                str_time = f"{record_time_str}:00"
+                timestamp = f"{str_date} {str_time}"
 
                 for item in st.session_state.cart:
                     row = [
-                        str(uuid.uuid4()), timestamp, str_date, now_time, meal_name,
+                        str(uuid.uuid4()), timestamp, str_date, str_time, meal_name,
                         item['ItemID'], item['Category'], 
                         item['Scale_Reading'], item['Bowl_Weight'], item['Net_Quantity'],
                         item['Cal_Sub'], item['Prot_Sub'], item['Fat_Sub'], item['Phos_Sub'],
@@ -334,31 +334,25 @@ with tab1:
                 except Exception as e:
                     st.error(f"寫入失敗：{e}")
 
-# --- Tab 2: 完食 (時間輸入優化) ---
+# --- Tab 2: 完食 ---
 with tab2:
     st.info("紀錄完食時間，若有剩餘，請將剩食倒入新容器(或原碗)秤重")
     
-    # 預設當下時間，格式為 4 碼字串 (0630)
+    # 預設當下時間
     default_now = datetime.now().strftime("%H%M")
     
-    # 使用 Columns 來排版時間輸入
     c_t1, c_t2 = st.columns(2)
     with c_t1:
-        # 輸入：開始時間
         raw_start = st.text_input("開始時間 (如 0639)", value=default_now, key="t_start")
     with c_t2:
-        # 輸入：結束時間
         raw_end = st.text_input("結束時間 (如 0700)", value=default_now, key="t_end")
     
-    # 自動格式化並顯示預覽
     fmt_start = format_time_str(raw_start)
     fmt_end = format_time_str(raw_end)
     finish_time_str = f"{fmt_start} - {fmt_end}"
     
-    # 顯示預覽結果，讓使用者確認
     st.caption(f"📝 將記錄為：**{finish_time_str}**")
 
-    # 狀態選擇
     finish_type = st.radio("狀態", ["全部吃光 (盤光光)", "有剩餘 (需秤重)"], horizontal=True)
     
     waste_net = 0.0
@@ -395,8 +389,9 @@ with tab2:
             st.error("剩餘重量計算錯誤，請檢查輸入數值。")
         else:
             str_date = record_date.strftime("%Y/%m/%d")
-            now_time = datetime.now().strftime("%H:%M:%S")
-            timestamp = f"{str_date} {now_time}"
+            # 完食紀錄的時間，通常使用「結束時間」作為寫入時間
+            str_time_finish = f"{fmt_end}:00"
+            timestamp = f"{str_date} {str_time_finish}"
             
             final_waste_net = -waste_net if finish_type == "有剩餘 (需秤重)" else 0
             final_waste_cal = -waste_cal if finish_type == "有剩餘 (需秤重)" else 0
@@ -404,7 +399,7 @@ with tab2:
             category_code = "剩食" if finish_type == "有剩餘 (需秤重)" else "完食"
 
             row = [
-                str(uuid.uuid4()), timestamp, str_date, now_time, meal_name,
+                str(uuid.uuid4()), timestamp, str_date, str_time_finish, meal_name,
                 item_id_code, category_code, 0, bowl_weight, 
                 final_waste_net, final_waste_cal, 
                 0, 0, 0, "",
