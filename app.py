@@ -1,10 +1,10 @@
-# 🚀 Python 程式碼 V4.4 (雲端連線 + 版面順序修正 + 自動收合)
+# 🚀 Python 程式碼 V4.5 (台灣時區校正 + 移除按鈕)
 
 import streamlit as st
 import pandas as pd
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 import uuid
 
 # --- 1. 設定頁面 ---
@@ -17,19 +17,25 @@ def safe_float(value):
     except (ValueError, TypeError):
         return 0.0
 
+# 取得台灣時間 (UTC+8)
+def get_tw_time():
+    tz_tw = timezone(timedelta(hours=8))
+    return datetime.now(tz_tw)
+
+# 時間格式化 (0618 -> 06:18)
 def format_time_str(t_str):
     t_str = str(t_str).strip().replace(":", "").replace("：", "")
     if len(t_str) == 3 and t_str.isdigit():
         t_str = "0" + t_str
     if len(t_str) == 4 and t_str.isdigit():
         return f"{t_str[:2]}:{t_str[2:]}"
-    return t_str if ":" in str(t_str) else datetime.now().strftime("%H:%M")
+    return t_str if ":" in str(t_str) else get_tw_time().strftime("%H:%M")
 
-# --- [重要修正] 連線設定 (雲端版) ---
+# --- 連線設定 (雲端版) ---
 @st.cache_resource
 def init_connection():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    # 讀取 Streamlit Secrets (雲端部署必備)
+    # 讀取 Streamlit Secrets
     creds_dict = st.secrets["gcp_service_account"]
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
     client = gspread.authorize(creds)
@@ -129,11 +135,9 @@ def add_to_cart_callback(bowl_w, last_ref_w, last_ref_n):
         "Unit": unit
     })
     
-    # 重置輸入
+    # 重置輸入與收合
     st.session_state.scale_val = 0.0
     st.session_state.check_zero = False
-    
-    # [修正] 自動收起 Expander (不需按鈕)
     st.session_state.expander_open = False
 
 # ==========================================
@@ -141,23 +145,24 @@ def add_to_cart_callback(bowl_w, last_ref_w, last_ref_n):
 # ==========================================
 st.title("🐱 大文餵食紀錄")
 
-# 初始化收合狀態
 if 'expander_open' not in st.session_state:
     st.session_state.expander_open = True
 
 with st.sidebar:
     st.header("⚙️ 設定")
-    record_date = st.date_input("📅 日期", datetime.now())
+    
+    tw_now = get_tw_time()
+    record_date = st.date_input("📅 日期", tw_now)
     str_date_filter = record_date.strftime("%Y/%m/%d")
     
-    default_sidebar_time = datetime.now().strftime("%H%M")
+    default_sidebar_time = tw_now.strftime("%H%M")
     raw_record_time = st.text_input("🕒 時間 (如 0618)", value=default_sidebar_time)
     record_time_str = format_time_str(raw_record_time)
     st.caption(f"將記錄為：{record_time_str}")
     st.caption("輸入數字後，點擊空白處即可生效")
 
 # ----------------------------------------------------
-# 1. 預算數據 (為了放在最上方 Dashboard)
+# 1. 計算本日數據 (Log Data)
 # ----------------------------------------------------
 df_today = pd.DataFrame()
 day_cal = 0.0
@@ -171,17 +176,20 @@ if not df_log.empty:
         df_today['Cal_Sub'] = pd.to_numeric(df_today['Cal_Sub'], errors='coerce').fillna(0)
         df_today['Net_Quantity'] = pd.to_numeric(df_today['Net_Quantity'], errors='coerce').fillna(0)
         
+        # 本日總重 (排除非食物)
         mask_day_weight = ~df_today['Category'].isin(['藥品', '保養品', '水'])
         day_weight = df_today[mask_day_weight]['Net_Quantity'].sum()
         day_cal = df_today['Cal_Sub'].sum()
 
         if 'Category' in df_today.columns:
+            # 統計保養品
             df_supp = df_today[df_today['Category'] == '保養品']
             if not df_supp.empty:
                 supp_counts = df_supp.groupby('Item_Name')['Net_Quantity'].sum()
                 supp_list = [f"{name}({int(val)})" for name, val in supp_counts.items()]
                 supp_str = "、".join(supp_list)
             
+            # 統計藥品
             df_med = df_today[df_today['Category'] == '藥品']
             if not df_med.empty:
                 med_counts = df_med.groupby('Item_Name')['Net_Quantity'].sum()
@@ -189,12 +197,12 @@ if not df_log.empty:
                 med_str = "、".join(med_list)
 
 # ----------------------------------------------------
-# 2. 顯示 Dashboard (最上方) - 使用 Placeholder
+# 2. 顯示 Dashboard (使用 Placeholder 置頂)
 # ----------------------------------------------------
 dashboard_placeholder = st.empty()
 
 # ----------------------------------------------------
-# 3. 餐別與碗重設定 (放在 Dashboard 下方)
+# 3. 餐別與碗重設定
 # ----------------------------------------------------
 recorded_meals = []
 if not df_today.empty:
@@ -202,7 +210,6 @@ if not df_today.empty:
 
 meal_options = ["第一餐", "第二餐", "第三餐", "第四餐", "第五餐", "點心"]
 
-# [修正] 使用 session_state 控制收合
 with st.expander("🥣 餐別與碗重設定 (點擊收合)", expanded=st.session_state.expander_open):
     c_meal, c_bowl = st.columns(2)
     with c_meal:
@@ -225,7 +232,7 @@ with st.expander("🥣 餐別與碗重設定 (點擊收合)", expanded=st.sessio
     with c_bowl:
         bowl_weight = st.number_input("🥣 碗重 (g)", value=last_bowl, step=0.1, format="%.1f")
 
-    # 顯示該餐已記明細
+    # 顯示本餐已記明細
     if not df_meal.empty:
         with st.expander(f"📜 查看 {meal_name} 已記錄明細"):
             view_df = df_meal[['Item_Name', 'Net_Quantity', 'Cal_Sub']].copy()
@@ -233,7 +240,7 @@ with st.expander("🥣 餐別與碗重設定 (點擊收合)", expanded=st.sessio
             st.dataframe(view_df, use_container_width=True, hide_index=True)
 
 # ----------------------------------------------------
-# 4. 回填 Dashboard 數據 (計算本餐)
+# 4. 回填 Dashboard (計算本餐數據)
 # ----------------------------------------------------
 meal_cal_sum = 0.0
 meal_weight_sum = 0.0
@@ -241,10 +248,12 @@ meal_weight_sum = 0.0
 if not df_meal.empty:
     df_meal['Cal_Sub'] = pd.to_numeric(df_meal['Cal_Sub'], errors='coerce').fillna(0)
     df_meal['Net_Quantity'] = pd.to_numeric(df_meal['Net_Quantity'], errors='coerce').fillna(0)
+    # 本餐總重 (排除藥品保養品)
     mask_meal_weight = ~df_meal['Category'].isin(['藥品', '保養品'])
     meal_weight_sum = df_meal[mask_meal_weight]['Net_Quantity'].sum()
     meal_cal_sum = df_meal['Cal_Sub'].sum()
 
+# 填入置頂區塊
 dashboard_placeholder.info(
     f"🔥 **本日**: {day_cal:.0f} kcal / {day_weight:.1f} g\n\n"
     f"🍽️ **本餐**: {meal_cal_sum:.0f} kcal / {meal_weight_sum:.1f} g\n\n"
@@ -259,6 +268,7 @@ dashboard_placeholder.info(
 if 'cart' not in st.session_state:
     st.session_state.cart = []
 
+# 計算上一筆參考重量
 last_reading_db = bowl_weight
 last_item_db = "碗"
 if not df_meal.empty:
@@ -338,7 +348,6 @@ with tab1:
         if scale_reading_ui <= 0: btn_disabled = True
         if "異常" in calc_msg_disp: btn_disabled = True 
 
-        # 加入清單按鈕 (點擊後觸發 callback 自動收起 expander)
         st.button("⬇️ 加入清單", 
                   type="secondary", 
                   use_container_width=True, 
@@ -351,7 +360,6 @@ with tab1:
         st.write("##### 🛒 待存清單 (可編輯)")
         df_cart = pd.DataFrame(st.session_state.cart)
         
-        # 允許編輯與刪除
         edited_df = st.data_editor(
             df_cart,
             use_container_width=True,
@@ -372,58 +380,15 @@ with tab1:
                 str_time = f"{record_time_str}:00"
                 timestamp = f"{str_date} {str_time}"
 
-                # 將 Data Editor 的結果轉回寫入格式
-                # 這裡簡單處理：如果是原本的行，保留完整資訊；如果是新加的行(雖然這介面很難加)，可能會缺資料
-                # 我們假設使用者主要是「刪除」或「修改數值」
-                
-                # 重新映射回原始結構
-                # 這裡為了安全，我們使用 index 對應
-                # 但如果使用者刪除了中間的行，index 會亂。
-                # 簡單策略：只允許刪除，不建議直接在表格改數值 (因為熱量不會重算)
-                # 為了寫入成功，我們仍使用 edited_df 進行迭代，但缺少的欄位嘗試從原始 cart 補
-                
-                # 為避免複雜，這裡直接寫入 edited_df，但需注意欄位遺失風險
-                # 最佳實務：Data Editor 包含所有欄位 (設為 hidden)，這樣回傳時才完整
-                # 這裡先維持 V4.3 邏輯
-                
-                # 權宜之計：如果 Data Editor 變更了，我們盡量匹配
-                # 但最穩定的方式是，我們把所有隱藏欄位都加進 data_editor
-                # 由於篇幅，這裡先用基礎寫入，假設使用者僅刪除
-                
-                # 為了避免出錯，我們這裡使用一個技巧：
-                # 如果是刪除，我們直接寫入剩餘的
-                # 如果是修改數字，我們只更新數字
-                
-                # 這裡簡化：重新組裝
-                # 警告：如果使用者在 Data Editor 新增一行，會因為缺欄位而報錯
-                
-                # 重新構建 rows (使用原始 session state 的完整資訊，配合 editor 的 index)
-                # 但 data_editor 的回傳是新的 DataFrame，無法直接對應 session state index
-                
-                # V4.4 修正寫入：
-                # 為了確保資料完整，我們還是只讓使用者在 data_editor 做「刪除」操作比較安全
-                # 如果要修改，建議刪除重加
-                
-                # 這裡我們嘗試從 edited_df 寫入，缺少的欄位填空或預設
                 for i, row_data in edited_df.iterrows():
-                    # 嘗試找回原始資料 (如果 Item_Name 相同)
-                    # 這不是完美的，但對簡單刪除有效
                     orig_item = next((x for x in st.session_state.cart if x['Item_Name'] == row_data['Item_Name']), {})
-                    
                     row = [
                         str(uuid.uuid4()), timestamp, str_date, str_time, meal_name,
-                        orig_item.get('ItemID', ''), 
-                        orig_item.get('Category', ''), 
-                        orig_item.get('Scale_Reading', 0), 
-                        orig_item.get('Bowl_Weight', 0), 
-                        row_data['Net_Quantity'], # 使用編輯過的值
-                        row_data['Cal_Sub'],      # 使用編輯過的值
-                        orig_item.get('Prot_Sub', 0), 
-                        orig_item.get('Fat_Sub', 0), 
-                        orig_item.get('Phos_Sub', 0),
-                        "", 
-                        row_data['Item_Name'], 
-                        ""
+                        orig_item.get('ItemID', ''), orig_item.get('Category', ''), 
+                        orig_item.get('Scale_Reading', 0), orig_item.get('Bowl_Weight', 0), 
+                        row_data['Net_Quantity'], row_data['Cal_Sub'],
+                        orig_item.get('Prot_Sub', 0), orig_item.get('Fat_Sub', 0), 
+                        orig_item.get('Phos_Sub', 0), "", row_data['Item_Name'], ""
                     ]
                     rows.append(row)
                 
@@ -432,7 +397,6 @@ with tab1:
                     st.toast("✅ 寫入成功！")
                     st.session_state.cart = []
                     load_data.clear()
-                    # 寫入成功後，將收合狀態設為 False
                     st.session_state.expander_open = False
                     st.rerun()
                 except Exception as e:
@@ -442,13 +406,13 @@ with tab1:
 with tab2:
     st.info("紀錄完食時間，若有剩餘，請將剩食倒入新容器(或原碗)秤重")
     
-    default_now = datetime.now().strftime("%H%M")
+    tw_now_hm = get_tw_time().strftime("%H%M")
     
     c_t1, c_t2 = st.columns(2)
     with c_t1:
-        raw_start = st.text_input("開始時間 (如 0639)", value=default_now, key="t_start")
+        raw_start = st.text_input("開始時間 (如 0639)", value=tw_now_hm, key="t_start")
     with c_t2:
-        raw_end = st.text_input("結束時間 (如 0700)", value=default_now, key="t_end")
+        raw_end = st.text_input("結束時間 (如 0700)", value=tw_now_hm, key="t_end")
     
     fmt_start = format_time_str(raw_start)
     fmt_end = format_time_str(raw_end)
