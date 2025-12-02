@@ -1,4 +1,4 @@
-# 🚀 Python 程式碼 V3.6 (邏輯修正與體驗優化版)
+🚀 Python 程式碼 V3.7 (時間選擇優化版)
 
 import streamlit as st
 import pandas as pd
@@ -17,19 +17,13 @@ def safe_float(value):
     except (ValueError, TypeError):
         return 0.0
 
-# --- 連線設定 (雲端版) ---
+# --- 連線設定 ---
 @st.cache_resource
 def init_connection():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    
-    # 改成從 Streamlit 的 Secrets 讀取，而不是讀檔案
-    # 注意：這裡的 "gcp_service_account" 要跟您在 Secrets 裡設定的標題一樣
-    creds_dict = st.secrets["gcp_service_account"]
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-    
+    creds = ServiceAccountCredentials.from_json_keyfile_name("service_account.json", scope)
     client = gspread.authorize(creds)
     return client
-
 
 try:
     client = init_connection()
@@ -72,11 +66,14 @@ with st.sidebar:
     st.header("⚙️ 日期設定")
     record_date = st.date_input("📅 日期", datetime.now())
     str_date_filter = record_date.strftime("%Y/%m/%d")
+    
+    # 這裡已經是 Time Picker 了，使用者可以直接滑動選擇
     record_time = st.time_input("🕒 時間", datetime.now())
+    
     st.caption("輸入數字後，點擊空白處即可生效")
 
 # ==========================================
-#      主畫面區塊 1：餐別設定 (Q2: 預設收合表格)
+#      主畫面區塊 1：餐別設定
 # ==========================================
 recorded_meals = []
 df_today = pd.DataFrame()
@@ -95,7 +92,6 @@ with st.expander("🥣 餐別與碗重設定 (點擊收合)", expanded=True):
             if m in recorded_meals:
                 return f"{m} (已記)"
             return m
-        # (Q6-1) 監聽餐別改變，這裡不需要特別寫 clear session，因為切換餐別自然會重新計算數據
         meal_name = st.selectbox("🍽️ 餐別", meal_options, format_func=meal_formatter)
     
     last_bowl = 30.0
@@ -113,7 +109,6 @@ with st.expander("🥣 餐別與碗重設定 (點擊收合)", expanded=True):
     with c_bowl:
         bowl_weight = st.number_input("🥣 碗重 (g)", value=last_bowl, step=0.1, format="%.1f")
 
-    # (Q2 修改：預設隱藏表格，需點擊展開)
     if not df_meal.empty:
         with st.expander(f"📜 查看 {meal_name} 已記錄明細"):
             view_df = df_meal[['Item_Name', 'Net_Quantity', 'Cal_Sub']].copy()
@@ -121,9 +116,8 @@ with st.expander("🥣 餐別與碗重設定 (點擊收合)", expanded=True):
             st.dataframe(view_df, use_container_width=True, hide_index=True)
 
 # ==========================================
-#      主畫面區塊 2：數據儀表板 (Q3, Q4, Q5)
+#      主畫面區塊 2：數據儀表板
 # ==========================================
-# 初始化數據
 day_cal = 0.0
 day_weight = 0.0
 meal_cal_sum = 0.0
@@ -132,20 +126,13 @@ supp_str = "無"
 med_str = "無"
 
 if not df_today.empty:
-    # 確保數值正確
     df_today['Cal_Sub'] = pd.to_numeric(df_today['Cal_Sub'], errors='coerce').fillna(0)
     df_today['Net_Quantity'] = pd.to_numeric(df_today['Net_Quantity'], errors='coerce').fillna(0)
     
-    # --- (Q3-1) 計算本日總重 (排除 藥品, 保養品, 水) ---
-    # 注意：Net_Quantity 裡已經包含了負數的「剩食」，所以直接加總即可自動扣除剩餘
     mask_day_weight = ~df_today['Category'].isin(['藥品', '保養品', '水'])
     day_weight = df_today[mask_day_weight]['Net_Quantity'].sum()
-    
-    # 計算本日熱量 (包含所有有熱量的東西，剩食為負數會自動扣)
     day_cal = df_today['Cal_Sub'].sum()
 
-    # --- (Q3-2) 計算本餐總重 (排除 藥品, 保養品, 但包含水?) ---
-    # 題目要求：本餐排除藥品、保養品。通常本餐會看含水重量，故保留水。
     if not df_meal.empty:
         df_meal['Cal_Sub'] = pd.to_numeric(df_meal['Cal_Sub'], errors='coerce').fillna(0)
         df_meal['Net_Quantity'] = pd.to_numeric(df_meal['Net_Quantity'], errors='coerce').fillna(0)
@@ -154,23 +141,19 @@ if not df_today.empty:
         meal_weight_sum = df_meal[mask_meal_weight]['Net_Quantity'].sum()
         meal_cal_sum = df_meal['Cal_Sub'].sum()
 
-    # --- 統計保養品與藥品 ---
     if 'Category' in df_today.columns:
-        # 保養品
         df_supp = df_today[df_today['Category'] == '保養品']
         if not df_supp.empty:
             supp_counts = df_supp.groupby('Item_Name')['Net_Quantity'].sum()
             supp_list = [f"{name}({int(val)})" for name, val in supp_counts.items()]
             supp_str = "、".join(supp_list)
         
-        # 藥品
         df_med = df_today[df_today['Category'] == '藥品']
         if not df_med.empty:
             med_counts = df_med.groupby('Item_Name')['Net_Quantity'].sum()
             med_list = [f"{name}({int(val)})" for name, val in med_counts.items()]
             med_str = "、".join(med_list)
 
-# (Q5: 調整顯示順序與格式)
 st.info(
     f"🔥 **本日**: {day_cal:.0f} kcal / {day_weight:.1f} g\n\n"
     f"🍽️ **本餐**: {meal_cal_sum:.0f} kcal / {meal_weight_sum:.1f} g\n\n"
@@ -185,7 +168,6 @@ st.info(
 if 'cart' not in st.session_state:
     st.session_state.cart = []
 
-# 抓上一筆秤重
 last_reading_db = bowl_weight
 last_item_db = "碗"
 if not df_meal.empty:
@@ -210,12 +192,7 @@ with tab1:
         c1, c2 = st.columns(2)
         with c1:
             unique_cats = ["請選擇..."] + list(df_items['Category'].unique())
-            
-            # (Q1: 類別更改清空數量)
-            # 使用 callback 或 key 檢查來重置
-            def on_cat_change():
-                st.session_state.scale_val = 0.0 # 重置數量
-                
+            def on_cat_change(): st.session_state.scale_val = 0.0
             filter_cat = st.selectbox("1. 類別", unique_cats, key="cat_select", on_change=on_cat_change)
             
             if filter_cat == "請選擇..." or filter_cat == "全部":
@@ -232,7 +209,6 @@ with tab1:
         c3, c4 = st.columns(2)
         
         with c3:
-            # 使用 key='scale_val' 來控制數值
             if 'scale_val' not in st.session_state: st.session_state.scale_val = 0.0
             
             if unit in ["顆", "粒", "錠", "膠囊"]:
@@ -248,7 +224,6 @@ with tab1:
         with c4:
             net_weight = 0.0
             calc_msg = "請輸入"
-            
             if scale_reading > 0:
                 if unit in ["顆", "粒", "錠", "膠囊"]:
                     net_weight = scale_reading
@@ -270,7 +245,6 @@ with tab1:
             else:
                 st.metric("淨重", f"{net_weight:.1f}", delta=calc_msg, delta_color="off")
 
-        # 加入按鈕
         btn_disabled = False
         if filter_cat == "請選擇..." or item_name == "請先選類別": btn_disabled = True
         if scale_reading <= 0: btn_disabled = True
@@ -279,7 +253,6 @@ with tab1:
         if st.button("⬇️ 加入清單", type="secondary", use_container_width=True, disabled=btn_disabled):
             item_id = item_map.get(item_name, "")
             category = cat_map.get(item_name, "")
-            
             cal_val = safe_float(cal_map.get(item_name, 0))
             prot_val = safe_float(prot_map.get(item_name, 0))
             fat_val = safe_float(fat_map.get(item_name, 0))
@@ -343,21 +316,30 @@ with tab1:
                 except Exception as e:
                     st.error(f"寫入失敗：{e}")
 
-# --- Tab 2: 完食 (Q6 介面邏輯大改) ---
+# --- Tab 2: 完食 (Q: 時間選擇器優化) ---
 with tab2:
     st.info("紀錄完食時間，若有剩餘，請將剩食倒入新容器(或原碗)秤重")
     
-    # 這裡移除了 st.form，為了讓 UI 可以即時互動
-    default_time_str = datetime.now().strftime("%H:%M")
-    finish_time_str = st.text_input("完食時間 (如 12:00-12:30)", value=default_time_str)
+    # 這裡不使用 st.form，以便實現即時展開
+    # --- 時間選擇優化 ---
+    c_t1, c_t2 = st.columns(2)
+    with c_t1:
+        # 開始時間：預設為 Sidebar 設定的記錄時間
+        finish_start = st.time_input("開始吃", value=record_time)
+    with c_t2:
+        # 結束時間：預設為現在 (User 當下點開 App 的時間)
+        finish_end = st.time_input("吃完/記錄時間", value=datetime.now().time())
     
-    # 狀態選擇 (Radio)
+    # 自動組合成字串
+    finish_time_str = f"{finish_start.strftime('%H:%M')} - {finish_end.strftime('%H:%M')}"
+    st.caption(f"將記錄為：{finish_time_str}")
+
+    # 狀態選擇
     finish_type = st.radio("狀態", ["全部吃光 (盤光光)", "有剩餘 (需秤重)"], horizontal=True)
     
     waste_net = 0.0
     waste_cal = 0.0
     
-    # (Q6-2) 只有選到 "有剩餘" 才會即時出現輸入框
     if finish_type == "有剩餘 (需秤重)":
         st.markdown("---")
         st.caption("請輸入「倒掉時」的秤重數據：")
@@ -374,7 +356,6 @@ with tab2:
             if waste_net > 0:
                 st.warning(f"📉 實際剩餘淨重：{waste_net:.1f} g")
                 
-                # 計算扣除熱量
                 if not df_meal.empty:
                     meal_foods = df_meal[df_meal['Net_Quantity'].apply(lambda x: safe_float(x)) > 0]
                     total_in_cal = meal_foods['Cal_Sub'].apply(safe_float).sum()
@@ -387,9 +368,8 @@ with tab2:
             elif waste_gross > 0 and waste_net <= 0:
                 st.error("空重不能大於總重！")
 
-    # 紀錄按鈕 (放在最後)
+    # 紀錄按鈕
     if st.button("💾 記錄完食/剩餘", type="primary"):
-        # 檢查邏輯
         if finish_type == "有剩餘 (需秤重)" and waste_net <= 0:
             st.error("剩餘重量計算錯誤，請檢查輸入數值。")
         else:
@@ -397,7 +377,6 @@ with tab2:
             now_time = datetime.now().strftime("%H:%M:%S")
             timestamp = f"{str_date} {now_time}"
             
-            # 如果是全部吃光，重量熱量都是 0；有剩餘則是負數
             final_waste_net = -waste_net if finish_type == "有剩餘 (需秤重)" else 0
             final_waste_cal = -waste_cal if finish_type == "有剩餘 (需秤重)" else 0
             item_id_code = "WASTE" if finish_type == "有剩餘 (需秤重)" else "FINISH"
@@ -406,7 +385,7 @@ with tab2:
             row = [
                 str(uuid.uuid4()), timestamp, str_date, now_time, meal_name,
                 item_id_code, category_code, 0, bowl_weight, 
-                final_waste_net, final_waste_cal, # 這裡存入負數
+                final_waste_net, final_waste_cal, 
                 0, 0, 0, "",
                 "完食紀錄", finish_time_str
             ]
