@@ -1,6 +1,6 @@
 # 🚀 Python 程式碼 V4.1 (無提示防跳動版)
 
-iimport streamlit as st
+import streamlit as st
 import pandas as pd
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
