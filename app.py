@@ -1,4 +1,4 @@
-# 🚀 Python 程式碼 V3.9 (全域時間輸入優化版)
+# 🚀 Python 程式碼 V4.0 (防跳動優化版)
 
 import streamlit as st
 import pandas as pd
@@ -17,7 +17,6 @@ def safe_float(value):
     except (ValueError, TypeError):
         return 0.0
 
-# 時間格式化小工具 (輸入 0618 -> 06:18)
 def format_time_str(t_str):
     t_str = str(t_str).strip().replace(":", "").replace("：", "")
     if len(t_str) == 3 and t_str.isdigit():
@@ -39,7 +38,6 @@ def init_connection():
     client = gspread.authorize(creds)
     return client
 
-
 try:
     client = init_connection()
     spreadsheet = client.open("DaWen daily record")
@@ -58,7 +56,7 @@ def load_data():
 
 df_items, df_log = load_data()
 
-# Mapping 初始化
+# 初始化 Mapping
 if not df_items.empty:
     df_items.columns = [c.strip() for c in df_items.columns]
     item_map = dict(zip(df_items['Item_Name'], df_items['ItemID']))
@@ -73,7 +71,87 @@ else:
     st.stop()
 
 # ==========================================
-#      左側 Dashboard
+#      邏輯函數區 (Callback Functions)
+#      這是解決畫面跳動的核心！
+# ==========================================
+
+def add_to_cart_callback(bowl_w, last_ref_w, last_ref_n):
+    """
+    這個函數會在按鈕按下的瞬間執行，執行完才渲染畫面。
+    這樣可以確保輸入框清空，且畫面不亂跳。
+    """
+    # 從 session_state 讀取當下的輸入值
+    # 注意：我們使用 key 來獲取值
+    category = st.session_state.get('cat_select', '請選擇...')
+    item_name = st.session_state.get('item_select', '請先選類別')
+    scale_reading = st.session_state.get('scale_val', 0.0)
+    is_zeroed = st.session_state.get('check_zero', False)
+    
+    # 基本檢查
+    if category == "請選擇..." or item_name == "請先選類別" or scale_reading <= 0:
+        return # 條件不符，不做事
+
+    unit = unit_map.get(item_name, "g")
+    
+    # 計算淨重邏輯
+    net_weight = 0.0
+    db_scale_reading = scale_reading
+    
+    if unit in ["顆", "粒", "錠", "膠囊"]:
+        net_weight = scale_reading
+        db_scale_reading = last_ref_w # 顆數不改變秤重讀數
+    else:
+        if is_zeroed:
+            net_weight = scale_reading
+        else:
+            if scale_reading < last_ref_w:
+                return # 異常，不做事 (雖然按鈕已鎖，雙重保險)
+            net_weight = scale_reading - last_ref_w
+
+    # 準備資料
+    item_id = item_map.get(item_name, "")
+    cat_real = cat_map.get(item_name, "")
+    
+    cal_val = safe_float(cal_map.get(item_name, 0))
+    prot_val = safe_float(prot_map.get(item_name, 0))
+    fat_val = safe_float(fat_map.get(item_name, 0))
+    phos_val = safe_float(phos_map.get(item_name, 0))
+
+    if unit in ["顆", "粒", "錠", "膠囊"]:
+        cal = net_weight * cal_val
+        prot = net_weight * prot_val
+        fat = net_weight * fat_val
+        phos = net_weight * phos_val
+    else:
+        cal = net_weight * cal_val / 100
+        prot = net_weight * prot_val / 100
+        fat = net_weight * fat_val / 100
+        phos = net_weight * phos_val / 100
+
+    # 加入購物車
+    st.session_state.cart.append({
+        "Category": cat_real,
+        "ItemID": item_id,
+        "Item_Name": item_name,
+        "Scale_Reading": db_scale_reading,
+        "Bowl_Weight": bowl_w,
+        "Net_Quantity": net_weight,
+        "Cal_Sub": cal,
+        "Prot_Sub": prot,
+        "Fat_Sub": fat,
+        "Phos_Sub": phos,
+        "Unit": unit
+    })
+    
+    # 成功提示
+    st.toast(f"✅ 已加入：{item_name} ({net_weight}{unit})")
+    
+    # ★ 關鍵：直接在後台重置輸入框的值，不需要 st.rerun()
+    st.session_state.scale_val = 0.0
+    st.session_state.check_zero = False
+
+# ==========================================
+#      UI 佈局開始
 # ==========================================
 st.title("🐱 大文餵食紀錄")
 
@@ -82,20 +160,13 @@ with st.sidebar:
     record_date = st.date_input("📅 日期", datetime.now())
     str_date_filter = record_date.strftime("%Y/%m/%d")
     
-    # --- [修改重點] 左側時間輸入優化 ---
-    # 預設為當下時間 (4碼字串)
     default_sidebar_time = datetime.now().strftime("%H%M")
     raw_record_time = st.text_input("🕒 時間 (如 0618)", value=default_sidebar_time)
-    
-    # 自動格式化並顯示預覽
     record_time_str = format_time_str(raw_record_time)
     st.caption(f"將記錄為：{record_time_str}")
-    
     st.caption("輸入數字後，點擊空白處即可生效")
 
-# ==========================================
-#      主畫面區塊 1：餐別與碗重
-# ==========================================
+# --- 主畫面區塊 1 ---
 recorded_meals = []
 df_today = pd.DataFrame()
 
@@ -134,9 +205,7 @@ with st.expander("🥣 餐別與碗重設定 (點擊收合)", expanded=True):
             view_df.columns = ['品名', '數量/重量', '熱量']
             st.dataframe(view_df, use_container_width=True, hide_index=True)
 
-# ==========================================
-#      主畫面區塊 2：數據儀表板
-# ==========================================
+# --- 主畫面區塊 2：數據 ---
 day_cal = 0.0
 day_weight = 0.0
 meal_cal_sum = 0.0
@@ -179,9 +248,7 @@ st.info(
     f"💊 **藥品**: {med_str}"
 )
 
-# ==========================================
-#      主畫面區塊 3：操作區
-# ==========================================
+# --- 主畫面區塊 3：操作區 ---
 
 if 'cart' not in st.session_state:
     st.session_state.cart = []
@@ -204,7 +271,7 @@ else:
 
 tab1, tab2 = st.tabs(["➕ 新增食物/藥品", "🏁 完食/紀錄剩餘"])
 
-# --- Tab 1: 新增 ---
+# --- Tab 1: 新增 (改用 Callback 模式) ---
 with tab1:
     with st.container(border=True):
         c1, c2 = st.columns(2)
@@ -220,86 +287,67 @@ with tab1:
                 filtered_items = df_items[df_items['Category'] == filter_cat]['Item_Name'].tolist()
 
         with c2:
-            item_name = st.selectbox("2. 品名", filtered_items if filtered_items else ["請先選類別"])
+            # [修改] 加入 key="item_select"
+            item_name = st.selectbox("2. 品名", filtered_items if filtered_items else ["請先選類別"], key="item_select")
 
         unit = unit_map.get(item_name, "g")
         
         c3, c4 = st.columns(2)
+        
         with c3:
+            # key="scale_val"
             if 'scale_val' not in st.session_state: st.session_state.scale_val = 0.0
+            
             if unit in ["顆", "粒", "錠", "膠囊"]:
-                scale_reading = st.number_input(f"3. 數量 ({unit})", step=1.0, key="scale_val")
-                is_zeroed = True 
-                db_scale_reading = last_ref_weight 
+                scale_reading_ui = st.number_input(f"3. 數量 ({unit})", step=1.0, key="scale_val")
+                # 介面顯示用邏輯
+                is_zeroed_ui = True 
             else:
-                scale_reading = st.number_input("3. 秤重讀數 (g)", step=0.1, format="%.1f", key="scale_val")
-                db_scale_reading = scale_reading
+                scale_reading_ui = st.number_input("3. 秤重讀數 (g)", step=0.1, format="%.1f", key="scale_val")
+                
                 st.caption(f"前筆: {last_ref_weight} g ({last_ref_name})")
-                is_zeroed = st.checkbox("⚖️ 已歸零 / 單獨秤重", value=False)
+                # key="check_zero"
+                is_zeroed_ui = st.checkbox("⚖️ 已歸零 / 單獨秤重", value=False, key="check_zero")
 
         with c4:
-            net_weight = 0.0
-            calc_msg = "請輸入"
-            if scale_reading > 0:
+            # 這裡只是單純顯示計算結果給使用者看，實際寫入邏輯在 callback
+            net_weight_disp = 0.0
+            calc_msg_disp = "請輸入"
+            if scale_reading_ui > 0:
                 if unit in ["顆", "粒", "錠", "膠囊"]:
-                    net_weight = scale_reading
-                    calc_msg = f"單位: {unit}"
+                    net_weight_disp = scale_reading_ui
+                    calc_msg_disp = f"單位: {unit}"
                 else:
-                    if is_zeroed:
-                        net_weight = scale_reading
-                        calc_msg = "單獨秤重"
+                    if is_zeroed_ui:
+                        net_weight_disp = scale_reading_ui
+                        calc_msg_disp = "單獨秤重"
                     else:
-                        if scale_reading < last_ref_weight:
-                            calc_msg = "⚠️ 數值異常"
-                            net_weight = 0.0
+                        if scale_reading_ui < last_ref_weight:
+                            calc_msg_disp = "⚠️ 數值異常"
+                            net_weight_disp = 0.0
                         else:
-                            net_weight = scale_reading - last_ref_weight
-                            calc_msg = f"扣除前筆 {last_ref_weight}"
+                            net_weight_disp = scale_reading_ui - last_ref_weight
+                            calc_msg_disp = f"扣除前筆 {last_ref_weight}"
             
-            if "異常" in calc_msg:
-                st.metric("淨重", "---", delta=calc_msg, delta_color="inverse")
+            if "異常" in calc_msg_disp:
+                st.metric("淨重", "---", delta=calc_msg_disp, delta_color="inverse")
             else:
-                st.metric("淨重", f"{net_weight:.1f}", delta=calc_msg, delta_color="off")
+                st.metric("淨重", f"{net_weight_disp:.1f}", delta=calc_msg_disp, delta_color="off")
 
         btn_disabled = False
         if filter_cat == "請選擇..." or item_name == "請先選類別": btn_disabled = True
-        if scale_reading <= 0: btn_disabled = True
-        if "異常" in calc_msg: btn_disabled = True 
+        if scale_reading_ui <= 0: btn_disabled = True
+        if "異常" in calc_msg_disp: btn_disabled = True 
 
-        if st.button("⬇️ 加入清單", type="secondary", use_container_width=True, disabled=btn_disabled):
-            item_id = item_map.get(item_name, "")
-            category = cat_map.get(item_name, "")
-            cal_val = safe_float(cal_map.get(item_name, 0))
-            prot_val = safe_float(prot_map.get(item_name, 0))
-            fat_val = safe_float(fat_map.get(item_name, 0))
-            phos_val = safe_float(phos_map.get(item_name, 0))
-
-            if unit in ["顆", "粒", "錠", "膠囊"]:
-                cal = net_weight * cal_val
-                prot = net_weight * prot_val
-                fat = net_weight * fat_val
-                phos = net_weight * phos_val
-            else:
-                cal = net_weight * cal_val / 100
-                prot = net_weight * prot_val / 100
-                fat = net_weight * fat_val / 100
-                phos = net_weight * phos_val / 100
-
-            st.session_state.cart.append({
-                "Category": category,
-                "ItemID": item_id,
-                "Item_Name": item_name,
-                "Scale_Reading": db_scale_reading,
-                "Bowl_Weight": bowl_weight,
-                "Net_Quantity": net_weight,
-                "Cal_Sub": cal,
-                "Prot_Sub": prot,
-                "Fat_Sub": fat,
-                "Phos_Sub": phos,
-                "Unit": unit
-            })
-            st.success(f"已加入：{item_name}")
-            st.rerun()
+        # [核心修改] 使用 on_click 回呼函數，不使用 if st.button
+        st.button("⬇️ 加入清單", 
+                  type="secondary", 
+                  use_container_width=True, 
+                  disabled=btn_disabled,
+                  on_click=add_to_cart_callback,
+                  # 傳入必要的參數 (碗重, 上一筆重, 上一筆名)
+                  args=(bowl_weight, last_ref_weight, last_ref_name)
+        )
 
     if st.session_state.cart:
         st.write("##### 🛒 待存清單")
@@ -310,8 +358,6 @@ with tab1:
             with st.spinner("寫入中..."):
                 rows = []
                 str_date = record_date.strftime("%Y/%m/%d")
-                
-                # [修改] 使用 Sidebar 的時間設定
                 str_time = f"{record_time_str}:00"
                 timestamp = f"{str_date} {str_time}"
 
@@ -330,7 +376,7 @@ with tab1:
                     st.toast("✅ 寫入成功！")
                     st.session_state.cart = []
                     load_data.clear()
-                    st.rerun()
+                    st.rerun() # 這裡需要 rerun 更新 dashboard
                 except Exception as e:
                     st.error(f"寫入失敗：{e}")
 
@@ -338,7 +384,6 @@ with tab1:
 with tab2:
     st.info("紀錄完食時間，若有剩餘，請將剩食倒入新容器(或原碗)秤重")
     
-    # 預設當下時間
     default_now = datetime.now().strftime("%H%M")
     
     c_t1, c_t2 = st.columns(2)
@@ -389,7 +434,7 @@ with tab2:
             st.error("剩餘重量計算錯誤，請檢查輸入數值。")
         else:
             str_date = record_date.strftime("%Y/%m/%d")
-            # 完食紀錄的時間，通常使用「結束時間」作為寫入時間
+            # 完食使用結束時間
             str_time_finish = f"{fmt_end}:00"
             timestamp = f"{str_date} {str_time_finish}"
             
