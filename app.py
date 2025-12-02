@@ -17,13 +17,19 @@ def safe_float(value):
     except (ValueError, TypeError):
         return 0.0
 
-# --- 連線設定 ---
+# --- 連線設定 (雲端版) ---
 @st.cache_resource
 def init_connection():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    creds = ServiceAccountCredentials.from_json_keyfile_name("service_account.json", scope)
+    
+    # 改成從 Streamlit 的 Secrets 讀取，而不是讀檔案
+    # 注意：這裡的 "gcp_service_account" 要跟您在 Secrets 裡設定的標題一樣
+    creds_dict = st.secrets["gcp_service_account"]
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+    
     client = gspread.authorize(creds)
     return client
+
 
 try:
     client = init_connection()
