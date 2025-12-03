@@ -233,7 +233,7 @@ recorded_meals = []
 if not df_today.empty:
     recorded_meals = df_today['Meal_Name'].unique().tolist()
 
-meal_options = ["第一餐", "第二餐", "第三餐", "第四餐", "第五餐", "點心"]
+meal_options = ["第一餐", "第二餐", "第三餐", "第四餐", "第五餐", "第六餐", "第七餐", "第八餐", "第九餐", "第十餐"]
 
 default_meal_index = 0
 for i, m in enumerate(meal_options):
