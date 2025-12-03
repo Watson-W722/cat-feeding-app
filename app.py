@@ -1,5 +1,5 @@
 import streamlit as st
-import streamlit.components.v1 as components # [新增] 用於控制捲動
+import streamlit.components.v1 as components
 import pandas as pd
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
@@ -133,9 +133,10 @@ def add_to_cart_callback(bowl_w, last_ref_w, last_ref_n):
     
     st.session_state.scale_val = 0.0
     st.session_state.check_zero = False
-    st.session_state.expander_open = False
+    
+    # 成功加入後，設定標記讓畫面捲動到頂端
+    st.session_state.just_saved = True
 
-# 清空完食輸入
 def clear_finish_inputs():
     st.session_state.waste_gross = 0.0
     st.session_state.waste_tare = 0.0
@@ -145,13 +146,14 @@ def clear_finish_inputs():
 # ==========================================
 st.title("🐱 大文餵食紀錄")
 
-# [新增] 自動捲動到頂端邏輯
-# 如果 session_state 中標記為 just_saved (剛存檔)，就執行 JS 捲動
-if 'just_saved' not in st.session_state:
-    st.session_state.just_saved = False
+# --- [關鍵修正] 初始化一定要放在最前面 ---
+if 'dash_open' not in st.session_state: st.session_state.dash_open = True
+if 'meal_open' not in st.session_state: st.session_state.meal_open = True
+if 'just_saved' not in st.session_state: st.session_state.just_saved = False
+if 'finish_radio' not in st.session_state: st.session_state.finish_radio = "全部吃光 (盤光光)"
 
+# 自動捲動邏輯
 if st.session_state.just_saved:
-    # 這段 JavaScript 會強制瀏覽器捲動到最上面
     js = """
     <script>
         var body = window.parent.document.querySelector(".main");
@@ -159,17 +161,9 @@ if st.session_state.just_saved:
     </script>
     """
     components.html(js, height=0)
-    # 執行完後重置狀態，避免每次整理都捲動
     st.session_state.just_saved = False
 
-
-if 'expander_open' not in st.session_state:
-    st.session_state.expander_open = False # V5.1 改為預設收起
-
-# 初始化 Radio
-if 'finish_radio' not in st.session_state:
-    st.session_state.finish_radio = "全部吃光 (盤光光)"
-
+# --- 側邊欄 ---
 with st.sidebar:
     st.header("⚙️ 設定")
     tw_now = get_tw_time()
@@ -182,7 +176,9 @@ with st.sidebar:
     st.caption(f"將記錄為：{record_time_str}")
     st.caption("輸入數字後，點擊空白處即可生效")
 
-# --- Dashboard ---
+# ----------------------------------------------------
+# 1. 預算 Dashboard 數據
+# ----------------------------------------------------
 df_today = pd.DataFrame()
 day_cal = 0.0
 day_weight = 0.0
@@ -212,17 +208,22 @@ if not df_log.empty:
                 med_list = [f"{name}({int(val)})" for name, val in med_counts.items()]
                 med_str = "、".join(med_list)
 
+# ----------------------------------------------------
+# 2. 顯示 Dashboard (現在 dash_open 已經被定義了)
+# ----------------------------------------------------
 with st.expander("📊 今日數據統計 (點擊收合)", expanded=st.session_state.dash_open):
     dash_container = st.container()
 
-# --- 餐別設定 ---
+# ----------------------------------------------------
+# 3. 餐別與碗重設定
+# ----------------------------------------------------
 recorded_meals = []
 if not df_today.empty:
     recorded_meals = df_today['Meal_Name'].unique().tolist()
 
 meal_options = ["第一餐", "第二餐", "第三餐", "第四餐", "第五餐", "點心"]
 
-with st.expander("🥣 餐別與碗重設定 (點擊收合)", expanded=st.session_state.expander_open):
+with st.expander("🥣 餐別與碗重設定 (點擊收合)", expanded=st.session_state.meal_open):
     c_meal, c_bowl = st.columns(2)
     with c_meal:
         def meal_formatter(m):
@@ -250,7 +251,9 @@ with st.expander("🥣 餐別與碗重設定 (點擊收合)", expanded=st.sessio
             view_df.columns = ['品名', '數量/重量', '熱量']
             st.dataframe(view_df, use_container_width=True, hide_index=True)
 
-# --- Dashboard 回填 ---
+# ----------------------------------------------------
+# 4. 回填 Dashboard
+# ----------------------------------------------------
 meal_cal_sum = 0.0
 meal_weight_sum = 0.0
 
@@ -418,8 +421,6 @@ with tab1:
                     st.toast("✅ 寫入成功！")
                     st.session_state.cart = []
                     load_data.clear()
-                    
-                    # [關鍵修正] 設定旗標，觸發自動捲動
                     st.session_state.just_saved = True
                     st.rerun()
                 except Exception as e:
@@ -430,7 +431,6 @@ with tab2:
     st.info(f"🍽️ 目前編輯：**{meal_name}**")
     st.caption("紀錄完食時間，若有剩餘，請將剩食倒入新容器(或原碗)秤重")
     
-    # 完食日期選擇
     finish_date = st.date_input("完食日期", value=record_date)
     str_finish_date = finish_date.strftime("%Y/%m/%d")
     
@@ -477,7 +477,6 @@ with tab2:
                     meal_foods = df_meal[df_meal['Net_Quantity'].apply(lambda x: safe_float(x)) > 0]
                     total_in_cal = meal_foods['Cal_Sub'].apply(safe_float).sum()
                     total_in_weight = meal_foods['Net_Quantity'].apply(safe_float).sum()
-                    
                     if total_in_weight > 0:
                         avg_density = total_in_cal / total_in_weight
                         waste_cal = waste_net * avg_density
@@ -509,8 +508,6 @@ with tab2:
                 st.toast("✅ 完食紀錄已儲存")
                 load_data.clear()
                 clear_finish_inputs()
-                
-                # [關鍵修正] 設定旗標，觸發自動捲動
                 st.session_state.just_saved = True
                 st.rerun()
             except Exception as e:
