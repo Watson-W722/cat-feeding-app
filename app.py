@@ -1,4 +1,4 @@
-# 🚀 Python 程式碼 V5.9 (最終手機穩定版)
+# 🚀 Python 程式碼 V6.0 (完食區邏輯修正版)
 import streamlit as st
 import streamlit.components.v1 as components
 import pandas as pd
@@ -74,7 +74,6 @@ else:
 #      邏輯函數區 (Callback)
 # ==========================================
 
-# 切換餐別時重置
 def reset_meal_inputs():
     st.session_state.scale_val = 0.0
     st.session_state.check_zero = False
@@ -140,8 +139,8 @@ def add_to_cart_callback(bowl_w, last_ref_w, last_ref_n):
     
     st.session_state.scale_val = 0.0
     st.session_state.check_zero = False
-    st.session_state.meal_open = False # 自動收合
-    st.session_state.just_saved = True # 觸發捲動
+    st.session_state.meal_open = False
+    st.session_state.just_saved = True
 
 def clear_finish_inputs():
     st.session_state.waste_gross = 0.0
@@ -152,14 +151,12 @@ def clear_finish_inputs():
 # ==========================================
 st.title("🐱 大文餵食紀錄")
 
-# 初始化狀態
 if 'dash_open' not in st.session_state: st.session_state.dash_open = False
 if 'meal_open' not in st.session_state: st.session_state.meal_open = False
 if 'just_saved' not in st.session_state: st.session_state.just_saved = False
 if 'finish_radio' not in st.session_state: st.session_state.finish_radio = "全部吃光 (盤光光)"
 if 'nav_mode' not in st.session_state: st.session_state.nav_mode = "➕ 新增食物/藥品"
 
-# 自動捲動邏輯
 if st.session_state.just_saved:
     js = """
     <script>
@@ -183,7 +180,6 @@ with st.sidebar:
     st.caption(f"將記錄為：{record_time_str}")
     st.caption("輸入數字後，點擊空白處即可生效")
     
-    # [新增] 手動重新整理按鈕 (以備不時之需)
     if st.button("🔄 重新整理數據"):
         load_data.clear()
         st.rerun()
@@ -295,11 +291,9 @@ dash_container.info(
 )
 
 # ==========================================
-#      主畫面區塊 3：操作區 (改用 Radio 導航解決手機跳動)
+#      主畫面區塊 3：操作區 (Radio 導航)
 # ==========================================
 
-# [使用 Radio 取代 Tabs]
-# label_visibility="collapsed" 會隱藏標題，看起來像選單
 nav_mode = st.radio(
     "操作模式", 
     ["➕ 新增食物/藥品", "🏁 完食/紀錄剩餘"], 
@@ -462,23 +456,17 @@ elif nav_mode == "🏁 完食/紀錄剩餘":
     st.info(f"🍽️ 目前編輯：**{meal_name}**")
     st.caption("紀錄完食時間，若有剩餘，請將剩食倒入新容器(或原碗)秤重")
     
-    default_now = get_tw_time().strftime("%H%M")
-    
-    c_t1, c_t2 = st.columns(2)
-    with c_t1:
-        # [修正] 加上 key 防止切換時重置
-        raw_start = st.text_input("開始時間 (如 0639)", value=default_now, key="finish_t_start")
-    with c_t2:
-        raw_end = st.text_input("結束時間 (如 0700)", value=default_now, key="finish_t_end")
-    
-    fmt_start = format_time_str(raw_start)
-    fmt_end = format_time_str(raw_end)
-    finish_time_str = f"{fmt_start} - {fmt_end}"
-    
+    # [修正] 完食日期 (保留狀態)
     finish_date = st.date_input("完食日期", value=record_date, key="finish_date_picker")
     str_finish_date = finish_date.strftime("%Y/%m/%d")
     
-    st.caption(f"📝 將記錄為：{str_finish_date} **{finish_time_str}**")
+    default_now = get_tw_time().strftime("%H%M")
+    
+    # [修正] 完食時間 (只留一個)
+    raw_end = st.text_input("完食時間 (如 0700)", value=default_now, key="finish_time_input")
+    fmt_end = format_time_str(raw_end)
+    
+    st.caption(f"📝 將記錄為：{str_finish_date} **{fmt_end}**")
 
     # 使用 session_state key 控制 Radio
     finish_type = st.radio(
@@ -510,6 +498,7 @@ elif nav_mode == "🏁 完食/紀錄剩餘":
                     meal_foods = df_meal[df_meal['Net_Quantity'].apply(lambda x: safe_float(x)) > 0]
                     total_in_cal = meal_foods['Cal_Sub'].apply(safe_float).sum()
                     total_in_weight = meal_foods['Net_Quantity'].apply(safe_float).sum()
+                    
                     if total_in_weight > 0:
                         avg_density = total_in_cal / total_in_weight
                         waste_cal = waste_net * avg_density
@@ -534,7 +523,7 @@ elif nav_mode == "🏁 完食/紀錄剩餘":
                 item_id_code, category_code, 0, bowl_weight, 
                 final_waste_net, final_waste_cal, 
                 0, 0, 0, "",
-                "完食紀錄", finish_time_str
+                "完食紀錄", str_time_finish # [修正] 這裡寫入時間字串
             ]
             try:
                 sheet_log.append_row(row)
