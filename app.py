@@ -406,7 +406,7 @@ if nav_mode == "➕ 新增食物/藥品":
         with c3:
             if 'scale_val' not in st.session_state: st.session_state.scale_val = None
             
-            if unit in ["顆", "粒", "錠", "膠囊"]:
+            if unit in ["顆", "粒", "錠", "膠囊", "次"]:
                 scale_reading_ui = st.number_input(f"3. 數量 ({unit})", step=1.0, key="scale_val", value=None, placeholder="輸入數量")
                 is_zeroed_ui = True 
             else:
