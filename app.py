@@ -1,4 +1,4 @@
-# Python 程式碼 V8.1 (強制渲染修復版)
+# Python 程式碼 V8.2 (HTML 縮排修復版)
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -69,7 +69,7 @@ def calculate_intake_breakdown(df):
     final_food_net = input_food + (total_waste * ratio_food)
     return final_food_net, final_water_net
 
-# --- [V7.8] UI 生成函數 (HTML/CSS) ---
+# --- [V8.2] UI 生成函數 (修正縮排問題) ---
 def render_dashboard_html(day_stats, meal_stats, supp_list, med_list):
     icons = {
         "flame": '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.1.2-2.2.6-3.3a1 1 0 0 0 2.1.7z"></path></svg>',
@@ -112,14 +112,14 @@ def render_dashboard_html(day_stats, meal_stats, supp_list, med_list):
     def get_stat_html(icon, label, value, unit, color_class, bar_color, percent=0):
         bar_html = f'<div class="bar-bg"><div class="bar-fill" style="width: {min(percent, 100)}%; background: {bar_color};"></div></div>' if percent > 0 else '<div style="height:6px; margin-top:10px"></div>'
         return f"""
-        <div class="stat-item">
-            <div>
-                <div class="stat-header"><div class="stat-icon {color_class}">{icons[icon]}</div>{label}</div>
-                <div style="display:flex; align-items:baseline;"><span class="stat-value">{value}</span><span class="stat-unit">{unit}</span></div>
-            </div>
-            {bar_html}
-        </div>
-        """
+<div class="stat-item">
+    <div>
+        <div class="stat-header"><div class="stat-icon {color_class}">{icons[icon]}</div>{label}</div>
+        <div style="display:flex; align-items:baseline;"><span class="stat-value">{value}</span><span class="stat-unit">{unit}</span></div>
+    </div>
+    {bar_html}
+</div>
+"""
 
     def get_tag_html(items, type_class, icon_key):
         if not items: return '<span style="color:#94a3b8; font-size:13px;">無</span>'
@@ -128,45 +128,45 @@ def render_dashboard_html(day_stats, meal_stats, supp_list, med_list):
             html += f"""<span class="tag {type_class}">{icons[icon_key]} {item['name']}<span class="tag-count">x{int(item['count'])}</span></span>"""
         return html
 
-    # 本日
-    daily_html = f
-    <div class="dashboard-card">
-        <div class="section-title"><div class="section-icon bg-orange">{icons['activity']}</div>本日總計</div>
-        <div class="grid-stats">
-            {get_stat_html("flame", "熱量", int(day_stats['cal']), "kcal", "bg-orange", "#f97316", day_stats['cal']/250)}
-            {get_stat_html("utensils", "食物", f"{day_stats['food']:.1f}", "g", "bg-blue", "#3b82f6")}
-            {get_stat_html("droplets", "飲水", f"{day_stats['water']:.1f}", "ml", "bg-cyan", "#06b6d4")}
-            {get_stat_html("beef", "蛋白質", f"{day_stats['prot']:.1f}", "g", "bg-red", "#ef4444")}
-            {get_stat_html("dna", "脂肪", f"{day_stats['fat']:.1f}", "g", "bg-yellow", "#eab308")}
-        </div>
+    # 本日 (移除縮排，避免被誤判為 Code Block)
+    daily_html = f"""
+<div class="dashboard-card">
+    <div class="section-title"><div class="section-icon bg-orange">{icons['activity']}</div>本日總計</div>
+    <div class="grid-stats">
+        {get_stat_html("flame", "熱量", int(day_stats['cal']), "kcal", "bg-orange", "#f97316", day_stats['cal']/250)}
+        {get_stat_html("utensils", "食物", f"{day_stats['food']:.1f}", "g", "bg-blue", "#3b82f6")}
+        {get_stat_html("droplets", "飲水", f"{day_stats['water']:.1f}", "ml", "bg-cyan", "#06b6d4")}
+        {get_stat_html("beef", "蛋白質", f"{day_stats['prot']:.1f}", "g", "bg-red", "#ef4444")}
+        {get_stat_html("dna", "脂肪", f"{day_stats['fat']:.1f}", "g", "bg-yellow", "#eab308")}
     </div>
-    
+</div>
+"""
     # 本餐
-    meal_html = f
-    <div class="dashboard-card">
-        <div class="section-title">
-            <div class="section-icon bg-blue">{icons['utensils']}</div>本餐小計
-            <span style="margin-left:auto; font-size:12px; background:#eff6ff; color:#3b82f6; padding:2px 8px; border-radius:99px; font-weight:600;">{meal_stats['name']}</span>
-        </div>
-        <div class="grid-stats">
-            {get_stat_html("flame", "熱量", int(meal_stats['cal']), "kcal", "bg-orange", "#f97316")}
-            {get_stat_html("utensils", "食物", f"{meal_stats['food']:.1f}", "g", "bg-blue", "#3b82f6")}
-            {get_stat_html("droplets", "飲水", f"{meal_stats['water']:.1f}", "ml", "bg-cyan", "#06b6d4")}
-            {get_stat_html("beef", "蛋白質", f"{meal_stats['prot']:.1f}", "g", "bg-red", "#ef4444")}
-            {get_stat_html("dna", "脂肪", f"{meal_stats['fat']:.1f}", "g", "bg-yellow", "#eab308")}
-        </div>
+    meal_html = f"""
+<div class="dashboard-card">
+    <div class="section-title">
+        <div class="section-icon bg-blue">{icons['utensils']}</div>本餐小計
+        <span style="margin-left:auto; font-size:12px; background:#eff6ff; color:#3b82f6; padding:2px 8px; border-radius:99px; font-weight:600;">{meal_stats['name']}</span>
     </div>
-    
+    <div class="grid-stats">
+        {get_stat_html("flame", "熱量", int(meal_stats['cal']), "kcal", "bg-orange", "#f97316")}
+        {get_stat_html("utensils", "食物", f"{meal_stats['food']:.1f}", "g", "bg-blue", "#3b82f6")}
+        {get_stat_html("droplets", "飲水", f"{meal_stats['water']:.1f}", "ml", "bg-cyan", "#06b6d4")}
+        {get_stat_html("beef", "蛋白質", f"{meal_stats['prot']:.1f}", "g", "bg-red", "#ef4444")}
+        {get_stat_html("dna", "脂肪", f"{meal_stats['fat']:.1f}", "g", "bg-yellow", "#eab308")}
+    </div>
+</div>
+"""
     # 藥品
-    supp_med_html = f
-    <div class="dashboard-card">
-        <div class="section-title"><div class="section-icon bg-green" style="background:#ecfdf5; color:#047857;">{icons['pill']}</div>保養與藥品紀錄</div>
-        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px;">
-            <div><div style="font-size:11px; font-weight:700; color:#94a3b8; margin-bottom:8px; text-transform:uppercase;">保養品清單</div><div class="tag-container">{get_tag_html(supp_list, "tag-green", "leaf")}</div></div>
-            <div><div style="font-size:11px; font-weight:700; color:#94a3b8; margin-bottom:8px; text-transform:uppercase;">藥品清單</div><div class="tag-container">{get_tag_html(med_list, "tag-red", "pill")}</div></div>
-        </div>
+    supp_med_html = f"""
+<div class="dashboard-card">
+    <div class="section-title"><div class="section-icon bg-green" style="background:#ecfdf5; color:#047857;">{icons['pill']}</div>保養與藥品紀錄</div>
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px;">
+        <div><div style="font-size:11px; font-weight:700; color:#94a3b8; margin-bottom:8px; text-transform:uppercase;">保養品清單</div><div class="tag-container">{get_tag_html(supp_list, "tag-green", "leaf")}</div></div>
+        <div><div style="font-size:11px; font-weight:700; color:#94a3b8; margin-bottom:8px; text-transform:uppercase;">藥品清單</div><div class="tag-container">{get_tag_html(med_list, "tag-red", "pill")}</div></div>
     </div>
-    
+</div>
+"""
     return style + daily_html + meal_html + supp_med_html
 
 # --- 連線設定 ---
@@ -350,7 +350,7 @@ def clear_finish_inputs_callback():
 st.title("🐱 大文餵食紀錄")
 
 # 初始化狀態
-if 'dash_open' not in st.session_state: st.session_state.dash_open = False
+if 'dash_open' not in st.session_state: st.session_state.dash_open = True
 if 'meal_open' not in st.session_state: st.session_state.meal_open = False
 if 'just_saved' not in st.session_state: st.session_state.just_saved = False
 if 'finish_radio' not in st.session_state: st.session_state.finish_radio = "全部吃光 (盤光光)"
@@ -499,7 +499,6 @@ if not df_meal.empty:
     meal_stats['prot'] = df_meal_clean['Prot_Sub'].sum()
     meal_stats['fat'] = df_meal_clean['Fat_Sub'].sum()
 
-# 渲染 HTML Dashboard (包含 unsafe_allow_html=True)
 html_content = render_dashboard_html(day_stats, meal_stats, supp_list, med_list)
 dashboard_ph.markdown(html_content, unsafe_allow_html=True)
 
