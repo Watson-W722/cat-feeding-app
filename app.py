@@ -1,6 +1,6 @@
-# Python 程式碼 V8.0 (React UI 渲染修復版)
+# Python 程式碼 V8.1 (強制渲染修復版)
 
-import streamlit as st
+iimport streamlit as st
 import streamlit.components.v1 as components
 import pandas as pd
 import gspread
@@ -71,7 +71,6 @@ def calculate_intake_breakdown(df):
 
 # --- [V7.8] UI 生成函數 (HTML/CSS) ---
 def render_dashboard_html(day_stats, meal_stats, supp_list, med_list):
-    # 定義 SVG 圖示
     icons = {
         "flame": '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.1.2-2.2.6-3.3a1 1 0 0 0 2.1.7z"></path></svg>',
         "utensils": '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>',
@@ -351,7 +350,7 @@ def clear_finish_inputs_callback():
 st.title("🐱 大文餵食紀錄")
 
 # 初始化狀態
-if 'dash_open' not in st.session_state: st.session_state.dash_open = True
+if 'dash_open' not in st.session_state: st.session_state.dash_open = False
 if 'meal_open' not in st.session_state: st.session_state.meal_open = False
 if 'just_saved' not in st.session_state: st.session_state.just_saved = False
 if 'finish_radio' not in st.session_state: st.session_state.finish_radio = "全部吃光 (盤光光)"
@@ -386,7 +385,7 @@ with st.sidebar:
         load_data.clear()
         st.rerun()
 
-# --- 1. 數據準備 (打包成字典) ---
+# --- 1. 數據準備 ---
 df_today = pd.DataFrame()
 day_stats = {'cal':0, 'food':0, 'water':0, 'prot':0, 'fat':0}
 meal_stats = {'name': '尚未選擇', 'cal':0, 'food':0, 'water':0, 'prot':0, 'fat':0}
@@ -500,7 +499,7 @@ if not df_meal.empty:
     meal_stats['prot'] = df_meal_clean['Prot_Sub'].sum()
     meal_stats['fat'] = df_meal_clean['Fat_Sub'].sum()
 
-# 渲染 HTML Dashboard (一定要有 unsafe_allow_html=True)
+# 渲染 HTML Dashboard (包含 unsafe_allow_html=True)
 html_content = render_dashboard_html(day_stats, meal_stats, supp_list, med_list)
 dashboard_ph.markdown(html_content, unsafe_allow_html=True)
 
@@ -745,5 +744,3 @@ elif nav_mode == "🏁 完食/紀錄剩餘":
               on_click=save_finish_callback,
               args=(finish_type, waste_net, waste_cal, bowl_weight, meal_name, fmt_finish_time, finish_date)
     )
-
-    # Force update V8.0 fix
