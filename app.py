@@ -1,4 +1,4 @@
-# Python 程式碼 V7.5.2 (變數初始化修復版)
+# Python 程式碼 V7.7 (五維數據儀表板版)
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -49,12 +49,10 @@ def clean_duplicate_finish_records(df):
     df_final = pd.concat([df_others, df_finish_clean], ignore_index=True)
     return df_final
 
-# 智能權重拆分計算函式 (V7.0 + V7.5過濾)
+# 智能權重拆分計算函式 (V7.0)
 def calculate_intake_breakdown(df):
     if df.empty:
         return 0.0, 0.0
-    
-    df = clean_duplicate_finish_records(df)
     
     if 'Category' in df.columns:
         df['Category'] = df['Category'].astype(str).str.strip()
@@ -268,6 +266,7 @@ def clear_finish_inputs_callback():
 # ==========================================
 st.title("🐱 大文餵食紀錄")
 
+# 初始化狀態
 if 'dash_open' not in st.session_state: st.session_state.dash_open = False
 if 'meal_open' not in st.session_state: st.session_state.meal_open = False
 if 'just_saved' not in st.session_state: st.session_state.just_saved = False
@@ -275,6 +274,7 @@ if 'finish_radio' not in st.session_state: st.session_state.finish_radio = "全�
 if 'nav_mode' not in st.session_state: st.session_state.nav_mode = "➕ 新增食物/藥品"
 if 'finish_error' not in st.session_state: st.session_state.finish_error = None
 
+# 自動捲動
 if st.session_state.just_saved:
     js = """
     <script>
@@ -302,29 +302,37 @@ with st.sidebar:
         load_data.clear()
         st.rerun()
 
-# --- [修正 1] 預先初始化所有變數，避免 NameError ---
+# ----------------------------------------------------
+# 1. Dashboard 數據計算 (V7.7 五維數據版)
+# ----------------------------------------------------
 df_today = pd.DataFrame()
 day_cal = 0.0
 day_food_net = 0.0
 day_water_net = 0.0
-meal_cal_sum = 0.0
-meal_food_net = 0.0
-meal_water_net = 0.0
+day_prot = 0.0 # [新增]
+day_fat = 0.0  # [新增]
+
 supp_str = "無"
 med_str = "無"
 
 if not df_log.empty:
     df_today = df_log[df_log['Date'] == str_date_filter].copy()
     if not df_today.empty:
-        # [V7.5] 關鍵修正：在計算前，先清洗掉多餘的完食紀錄
+        if 'Category' in df_today.columns:
+            df_today['Category'] = df_today['Category'].astype(str).str.strip()
+        
+        # 數值轉換，包含 Prot 和 Fat
+        num_cols = ['Cal_Sub', 'Net_Quantity', 'Prot_Sub', 'Fat_Sub']
+        for col in num_cols:
+            if col in df_today.columns:
+                df_today[col] = pd.to_numeric(df_today[col], errors='coerce').fillna(0)
+        
         df_today = clean_duplicate_finish_records(df_today)
         
-        df_today['Cal_Sub'] = pd.to_numeric(df_today['Cal_Sub'], errors='coerce').fillna(0)
-        df_today['Net_Quantity'] = pd.to_numeric(df_today['Net_Quantity'], errors='coerce').fillna(0)
-        
-        # 智能拆分
         day_food_net, day_water_net = calculate_intake_breakdown(df_today)
         day_cal = df_today['Cal_Sub'].sum()
+        day_prot = df_today['Prot_Sub'].sum() # [新增]
+        day_fat = df_today['Fat_Sub'].sum()   # [新增]
 
         if 'Category' in df_today.columns:
             df_supp = df_today[df_today['Category'] == '保養品']
@@ -339,10 +347,13 @@ if not df_log.empty:
                 med_list = [f"{name}({int(val)})" for name, val in med_counts.items()]
                 med_str = "、".join(med_list)
 
+# Dashboard 顯示區
 with st.expander("📊 今日數據統計 (點擊收合)", expanded=st.session_state.dash_open):
     dash_container = st.container()
 
-# --- 餐別設定 ---
+# ----------------------------------------------------
+# 2. 餐別設定
+# ----------------------------------------------------
 recorded_meals = []
 if not df_today.empty:
     recorded_meals = df_today['Meal_Name'].unique().tolist()
@@ -401,22 +412,48 @@ with st.expander("🥣 餐別與碗重設定 (點擊收合)", expanded=st.sessio
             view_df.columns = ['品名', '數量/重量', '熱量']
             st.dataframe(view_df, use_container_width=True, hide_index=True)
 
-# --- 回填 Dashboard ---
+# --- 回填 Dashboard (計算本餐數據) ---
+meal_cal_sum = 0.0
+meal_food_net = 0.0
+meal_water_net = 0.0
+meal_prot = 0.0
+meal_fat = 0.0
+
 if not df_meal.empty:
-    df_meal['Cal_Sub'] = pd.to_numeric(df_meal['Cal_Sub'], errors='coerce').fillna(0)
-    df_meal['Net_Quantity'] = pd.to_numeric(df_meal['Net_Quantity'], errors='coerce').fillna(0)
+    num_cols = ['Cal_Sub', 'Net_Quantity', 'Prot_Sub', 'Fat_Sub']
+    for col in num_cols:
+        if col in df_meal.columns:
+            df_meal[col] = pd.to_numeric(df_meal[col], errors='coerce').fillna(0)
     
-    # [V7.5] 本餐去重 + 拆分
     df_meal_clean = clean_duplicate_finish_records(df_meal)
+    
     meal_food_net, meal_water_net = calculate_intake_breakdown(df_meal_clean)
     meal_cal_sum = df_meal_clean['Cal_Sub'].sum()
+    meal_prot = df_meal_clean['Prot_Sub'].sum()
+    meal_fat = df_meal_clean['Fat_Sub'].sum()
 
-dash_container.info(
-    f"🔥 **本日**: {day_cal:.0f} kcal / {day_food_net:.1f} g / {day_water_net:.1f} g(水)\n\n"
-    f"🍽️ **本餐**: {meal_cal_sum:.0f} kcal / {meal_food_net:.1f} g / {meal_water_net:.1f} g(水)\n\n"
-    f"🌿 **保養**: {supp_str}\n\n"
-    f"💊 **藥品**: {med_str}"
-)
+# [V7.7 新版 Dashboard 排版]
+with dash_container:
+    st.markdown("#### 🔥 本日統計")
+    d1, d2, d3, d4, d5 = st.columns(5)
+    d1.metric("熱量", f"{day_cal:.0f} kcal")
+    d2.metric("食物", f"{day_food_net:.1f} g")
+    d3.metric("水", f"{day_water_net:.1f} g")
+    d4.metric("蛋白質", f"{day_prot:.1f} g")
+    d5.metric("脂肪", f"{day_fat:.1f} g")
+    
+    st.divider()
+    
+    st.markdown(f"#### 🍽️ 本餐小計 ({meal_name})")
+    m1, m2, m3, m4, m5 = st.columns(5)
+    m1.metric("熱量", f"{meal_cal_sum:.0f} kcal")
+    m2.metric("食物", f"{meal_food_net:.1f} g")
+    m3.metric("水", f"{meal_water_net:.1f} g")
+    m4.metric("蛋白質", f"{meal_prot:.1f} g")
+    m5.metric("脂肪", f"{meal_fat:.1f} g")
+    
+    if supp_str != "無" or med_str != "無":
+        st.caption(f"🌿 **保養**: {supp_str} | 💊 **藥品**: {med_str}")
 
 # ==========================================
 #      主畫面區塊 3：操作區
@@ -636,10 +673,7 @@ elif nav_mode == "🏁 完食/紀錄剩餘":
             if waste_net > 0:
                 st.warning(f"📉 實際剩餘淨重：{waste_net:.1f} g")
                 if not df_meal.empty:
-                    # [V7.5] 這裡也用清洗後的 df
-                    df_meal_clean = clean_duplicate_finish_records(df_meal)
-                    meal_foods = df_meal_clean[df_meal_clean['Net_Quantity'].apply(lambda x: safe_float(x)) > 0]
-                    
+                    meal_foods = df_meal[df_meal['Net_Quantity'].apply(lambda x: safe_float(x)) > 0]
                     exclude_meds = ['藥品', '保養品']
                     if 'Category' in meal_foods.columns:
                         meal_foods['Category'] = meal_foods['Category'].astype(str).str.strip()
