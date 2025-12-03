@@ -140,7 +140,7 @@ def add_to_cart_callback(bowl_w, last_ref_w, last_ref_n):
     net_weight = 0.0
     db_scale_reading = scale_reading
     
-    if unit in ["顆", "粒", "錠", "膠囊"]:
+    if unit in ["顆", "粒", "錠", "膠囊", "次"]:
         net_weight = scale_reading
         db_scale_reading = last_ref_w 
     else:
@@ -158,7 +158,7 @@ def add_to_cart_callback(bowl_w, last_ref_w, last_ref_n):
     fat_val = safe_float(fat_map.get(item_name, 0))
     phos_val = safe_float(phos_map.get(item_name, 0))
 
-    if unit in ["顆", "粒", "錠", "膠囊"]:
+    if unit in ["顆", "粒", "錠", "膠囊", "次"]:
         cal = net_weight * cal_val
         prot = net_weight * prot_val
         fat = net_weight * fat_val
@@ -421,7 +421,7 @@ if nav_mode == "➕ 新增食物/藥品":
             scale_val = safe_float(scale_reading_ui)
             
             if scale_val > 0:
-                if unit in ["顆", "粒", "錠", "膠囊"]:
+                if unit in ["顆", "粒", "錠", "膠囊", "次"]:
                     net_weight_disp = scale_val
                     calc_msg_disp = f"單位: {unit}"
                 else:
