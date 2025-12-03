@@ -1,4 +1,4 @@
-# 🚀 Python 程式碼 V5.7 (餐別連動重置 + 明細時間顯示)
+# 🚀 Python 程式碼 V5.8 (完食區優化版)
 import streamlit as st
 import streamlit.components.v1 as components
 import pandas as pd
@@ -29,7 +29,7 @@ def format_time_str(t_str):
         return f"{t_str[:2]}:{t_str[2:]}"
     return t_str if ":" in str(t_str) else get_tw_time().strftime("%H:%M")
 
-# --- 連線設定 ---
+# --- 連線設定 (雲端版) ---
 @st.cache_resource
 def init_connection():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -74,16 +74,14 @@ else:
 #      邏輯函數區 (Callback)
 # ==========================================
 
-# [修正 1] 切換餐別時的重置函式
+# 切換餐別時的重置函式
 def reset_meal_inputs():
-    # 重置新增區
     st.session_state.scale_val = 0.0
     st.session_state.check_zero = False
-    # 重置完食區
     st.session_state.waste_gross = 0.0
     st.session_state.waste_tare = 0.0
     st.session_state.finish_radio = "全部吃光 (盤光光)"
-    # 注意：完食區的時間/日期不重置，保留當下時間方便操作
+    # 注意：完食區的時間/日期不重置，保留當下操作方便
 
 def add_to_cart_callback(bowl_w, last_ref_w, last_ref_n):
     category = st.session_state.get('cat_select', '請選擇...')
@@ -225,7 +223,7 @@ if not df_today.empty:
 
 meal_options = ["第一餐", "第二餐", "第三餐", "第四餐", "第五餐", "點心"]
 
-# 自動計算預設餐別 (Auto-Advance)
+# Auto-Advance Logic
 default_meal_index = 0
 for i, m in enumerate(meal_options):
     if m not in recorded_meals:
@@ -237,8 +235,6 @@ with st.expander("🥣 餐別與碗重設定 (點擊收合)", expanded=st.sessio
     with c_meal:
         def meal_formatter(m):
             return f"{m} (已記)" if m in recorded_meals else m
-        
-        # [修正 1] 加入 on_change callback 清空資料
         meal_name = st.selectbox(
             "🍽️ 餐別", 
             meal_options, 
@@ -265,20 +261,13 @@ with st.expander("🥣 餐別與碗重設定 (點擊收合)", expanded=st.sessio
 
     if not df_meal.empty:
         with st.expander(f"📜 查看 {meal_name} 已記錄明細"):
-            # [修正 3] 明細表格加工：若為完食紀錄，加上時間
             view_df = df_meal[['Item_Name', 'Net_Quantity', 'Cal_Sub', 'Time']].copy()
-            
-            # 使用 apply 修改 Item_Name
             def append_time_to_finish(row):
-                if row['Item_Name'] == '完食紀錄':
-                    # 假設 Time 格式為 HH:MM:SS 或 HH:MM，取前5碼 HH:MM
+                if '完食' in str(row['Item_Name']):
                     time_str = str(row['Time'])[:5]
-                    return f"完食紀錄 {time_str}"
+                    return f"{row['Item_Name']} {time_str}"
                 return row['Item_Name']
-
             view_df['Item_Name'] = view_df.apply(append_time_to_finish, axis=1)
-            
-            # 移除 Time 欄位，不顯示在表格中
             view_df = view_df.drop(columns=['Time'])
             view_df.columns = ['品名', '數量/重量', '熱量']
             st.dataframe(view_df, use_container_width=True, hide_index=True)
@@ -461,27 +450,18 @@ with tab2:
     st.info(f"🍽️ 目前編輯：**{meal_name}**")
     st.caption("紀錄完食時間，若有剩餘，請將剩食倒入新容器(或原碗)秤重")
     
-    # [修正 2] 完食時間/日期使用 session_state key，確保切換 Tab/Radio 時不消失
-    tw_now_hm = get_tw_time().strftime("%H%M")
-    
-    c_t1, c_t2 = st.columns(2)
-    with c_t1:
-        # 使用 key 保存
-        raw_start = st.text_input("開始時間 (如 0639)", value=tw_now_hm, key="finish_t_start")
-    with c_t2:
-        raw_end = st.text_input("結束時間 (如 0700)", value=tw_now_hm, key="finish_t_end")
-    
-    fmt_start = format_time_str(raw_start)
-    fmt_end = format_time_str(raw_end)
-    finish_time_str = f"{fmt_start} - {fmt_end}"
-    
-    # 日期選擇，使用 key
+    # [修正 2] 完食日期 (保留狀態)
     finish_date = st.date_input("完食日期", value=record_date, key="finish_date_picker")
     str_finish_date = finish_date.strftime("%Y/%m/%d")
     
-    st.caption(f"📝 將記錄為：**{finish_time_str}** (日期: {str_finish_date})")
+    # [修正 2] 完食時間 (只留一個，保留狀態)
+    default_now = get_tw_time().strftime("%H%M")
+    raw_end = st.text_input("完食時間 (如 0700)", value=default_now, key="finish_time_input")
+    fmt_end = format_time_str(raw_end)
+    
+    st.caption(f"📝 將記錄為：{str_finish_date} **{fmt_end}**")
 
-    # [修正 2-2] Radio 按鈕使用 session_state，確保不重置
+    # [修正 3] 狀態 Radio
     finish_type = st.radio(
         "狀態", 
         ["全部吃光 (盤光光)", "有剩餘 (需秤重)"], 
@@ -536,7 +516,7 @@ with tab2:
                 item_id_code, category_code, 0, bowl_weight, 
                 final_waste_net, final_waste_cal, 
                 0, 0, 0, "",
-                "完食紀錄", finish_time_str
+                "完食紀錄", str_time_finish
             ]
             try:
                 sheet_log.append_row(row)
