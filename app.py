@@ -1,6 +1,6 @@
 # Python 程式碼 V8.1 (強制渲染修復版)
 
-iimport streamlit as st
+import streamlit as st
 import streamlit.components.v1 as components
 import pandas as pd
 import gspread
