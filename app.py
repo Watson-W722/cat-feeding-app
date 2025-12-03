@@ -1,4 +1,4 @@
-# 🚀 Python 程式碼 V6.6 (自動跳餐 + 切換重置版)
+# 🚀 Python 程式碼 V6.7 (錯誤修復與輸入框淨空版)
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -14,6 +14,7 @@ st.set_page_config(page_title="大文餵食紀錄", page_icon="🐱", layout="wi
 # --- 小工具 ---
 def safe_float(value):
     try:
+        if value is None: return 0.0
         return float(value)
     except (ValueError, TypeError):
         return 0.0
@@ -75,20 +76,21 @@ else:
 #      邏輯函數區 (Callback)
 # ==========================================
 
-# [需求 2] 切換餐別時的重置函式
+# [修正] 重置函式改為設為 None
 def reset_meal_inputs():
-    # 清空新增區
-    st.session_state.scale_val = 0.0
+    st.session_state.scale_val = None
     st.session_state.check_zero = False
-    # 清空完食區
-    st.session_state.waste_gross = 0.0
-    st.session_state.waste_tare = 0.0
+    st.session_state.waste_gross = None
+    st.session_state.waste_tare = None
     st.session_state.finish_radio = "全部吃光 (盤光光)"
 
 def add_to_cart_callback(bowl_w, last_ref_w, last_ref_n):
     category = st.session_state.get('cat_select', '請選擇...')
     item_name = st.session_state.get('item_select', '請先選類別')
-    scale_reading = st.session_state.get('scale_val', 0.0)
+    
+    # 處理 None 值
+    raw_scale = st.session_state.get('scale_val')
+    scale_reading = safe_float(raw_scale)
     is_zeroed = st.session_state.get('check_zero', False)
     
     if category == "請選擇..." or item_name == "請先選類別" or scale_reading <= 0:
@@ -141,14 +143,17 @@ def add_to_cart_callback(bowl_w, last_ref_w, last_ref_n):
         "Unit": unit
     })
     
-    st.session_state.scale_val = 0.0
+    # [修正] 重置為 None
+    st.session_state.scale_val = None
     st.session_state.check_zero = False
     st.session_state.meal_open = False
     st.session_state.just_saved = True
 
-def clear_finish_inputs():
-    st.session_state.waste_gross = 0.0
-    st.session_state.waste_tare = 0.0
+# [修正] 重置為 None，解決 session state 衝突
+def clear_finish_inputs_callback():
+    # 此函式由按鈕直接觸發，或在 rerun 前手動修改 state
+    st.session_state.waste_gross = None
+    st.session_state.waste_tare = None
 
 # ==========================================
 #      UI 佈局開始
@@ -160,6 +165,7 @@ if 'dash_open' not in st.session_state: st.session_state.dash_open = False
 if 'meal_open' not in st.session_state: st.session_state.meal_open = False
 if 'just_saved' not in st.session_state: st.session_state.just_saved = False
 if 'finish_radio' not in st.session_state: st.session_state.finish_radio = "全部吃光 (盤光光)"
+if 'nav_mode' not in st.session_state: st.session_state.nav_mode = "➕ 新增食物/藥品"
 
 # 自動捲動邏輯
 if st.session_state.just_saved:
@@ -189,9 +195,7 @@ with st.sidebar:
         load_data.clear()
         st.rerun()
 
-# ----------------------------------------------------
-# 1. 計算數據
-# ----------------------------------------------------
+# --- Dashboard ---
 df_today = pd.DataFrame()
 day_cal = 0.0
 day_weight = 0.0
@@ -201,15 +205,12 @@ med_str = "無"
 if not df_log.empty:
     df_today = df_log[df_log['Date'] == str_date_filter].copy()
     if not df_today.empty:
-        if 'Category' in df_today.columns:
-            df_today['Category'] = df_today['Category'].astype(str).str.strip()
-        
         df_today['Cal_Sub'] = pd.to_numeric(df_today['Cal_Sub'], errors='coerce').fillna(0)
         df_today['Net_Quantity'] = pd.to_numeric(df_today['Net_Quantity'], errors='coerce').fillna(0)
         
-        # 排除水與飲用水
         exclude_list = ['藥品', '保養品', '水', '飲用水']
         mask_day_weight = ~df_today['Category'].isin(exclude_list)
+        
         day_weight = df_today[mask_day_weight]['Net_Quantity'].sum()
         day_cal = df_today['Cal_Sub'].sum()
 
@@ -229,27 +230,22 @@ if not df_log.empty:
 with st.expander("📊 今日數據統計 (點擊收合)", expanded=st.session_state.dash_open):
     dash_container = st.container()
 
-# ----------------------------------------------------
-# 2. 餐別設定 (含 [需求 1] 自動跳餐邏輯)
-# ----------------------------------------------------
-meal_options = ["第一餐", "第二餐", "第三餐", "第四餐", "第五餐", "點心"]
+# --- 餐別設定 ---
 recorded_meals = []
 if not df_today.empty:
     recorded_meals = df_today['Meal_Name'].unique().tolist()
 
-# 計算「未紀錄的第一筆」
-next_meal_to_do = meal_options[0]
-for m in meal_options:
+meal_options = ["第一餐", "第二餐", "第三餐", "第四餐", "第五餐", "點心"]
+
+default_meal_index = 0
+for i, m in enumerate(meal_options):
     if m not in recorded_meals:
-        next_meal_to_do = m
+        default_meal_index = i
         break
 
-# 強制設定 Session State (如果尚未初始化，或剛存檔完)
-# 邏輯：只有在初始化時，或者剛自動捲動(代表剛存檔)時，才自動切換
-# 平常手動切換時不應該強制跳轉
+# 確保 meal_selector 初始化
 if 'meal_selector' not in st.session_state:
-    st.session_state.meal_selector = next_meal_to_do
-# 如果目前選的已經記過了，且不是手動切換的瞬間，嘗試推進 (這裡為了簡單，依賴剛存檔後的重新整理)
+    st.session_state.meal_selector = meal_options[default_meal_index]
 
 with st.expander("🥣 餐別與碗重設定 (點擊收合)", expanded=st.session_state.meal_open):
     c_meal, c_bowl = st.columns(2)
@@ -257,14 +253,13 @@ with st.expander("🥣 餐別與碗重設定 (點擊收合)", expanded=st.sessio
         def meal_formatter(m):
             return f"{m} (已記)" if m in recorded_meals else m
         
-        # [修正] 這裡我們不使用 index，而是直接綁定 key 並初始化
-        # 這樣 Streamlit 會自動管理狀態
         meal_name = st.selectbox(
             "🍽️ 餐別", 
             meal_options, 
+            index=default_meal_index, 
             format_func=meal_formatter,
             key="meal_selector",
-            on_change=reset_meal_inputs # [需求 2] 切換時清空
+            on_change=reset_meal_inputs
         )
     
     last_bowl = 30.0
@@ -280,6 +275,7 @@ with st.expander("🥣 餐別與碗重設定 (點擊收合)", expanded=st.sessio
                 pass
     
     with c_bowl:
+        # [修正] value=None 是不行的，碗重必須有值。維持預設值。
         bowl_weight = st.number_input("🥣 碗重 (g)", value=last_bowl, step=0.1, format="%.1f")
 
     if not df_meal.empty:
@@ -295,20 +291,15 @@ with st.expander("🥣 餐別與碗重設定 (點擊收合)", expanded=st.sessio
             view_df.columns = ['品名', '數量/重量', '熱量']
             st.dataframe(view_df, use_container_width=True, hide_index=True)
 
-# --- 回填 Dashboard ---
+# --- Dashboard 回填 ---
 meal_cal_sum = 0.0
 meal_weight_sum = 0.0
 
 if not df_meal.empty:
     df_meal['Cal_Sub'] = pd.to_numeric(df_meal['Cal_Sub'], errors='coerce').fillna(0)
     df_meal['Net_Quantity'] = pd.to_numeric(df_meal['Net_Quantity'], errors='coerce').fillna(0)
-    
-    exclude_list_meal = ['藥品', '保養品', '水', '飲用水']
-    if 'Category' in df_meal.columns:
-        df_meal['Category'] = df_meal['Category'].astype(str).str.strip()
-        mask_meal_weight = ~df_meal['Category'].isin(exclude_list_meal)
-        meal_weight_sum = df_meal[mask_meal_weight]['Net_Quantity'].sum()
-    
+    mask_meal_weight = ~df_meal['Category'].isin(['藥品', '保養品'])
+    meal_weight_sum = df_meal[mask_meal_weight]['Net_Quantity'].sum()
     meal_cal_sum = df_meal['Cal_Sub'].sum()
 
 dash_container.info(
@@ -357,7 +348,7 @@ if nav_mode == "➕ 新增食物/藥品":
         c1, c2 = st.columns(2)
         with c1:
             unique_cats = ["請選擇..."] + list(df_items['Category'].unique())
-            def on_cat_change(): st.session_state.scale_val = 0.0
+            def on_cat_change(): st.session_state.scale_val = None # 清空
             filter_cat = st.selectbox("1. 類別", unique_cats, key="cat_select", on_change=on_cat_change)
             
             if filter_cat == "請選擇..." or filter_cat == "全部":
@@ -373,33 +364,39 @@ if nav_mode == "➕ 新增食物/藥品":
         
         c3, c4 = st.columns(2)
         with c3:
-            if 'scale_val' not in st.session_state: st.session_state.scale_val = 0.0
+            if 'scale_val' not in st.session_state: st.session_state.scale_val = None
             
             if unit in ["顆", "粒", "錠", "膠囊"]:
-                scale_reading_ui = st.number_input(f"3. 數量 ({unit})", step=1.0, key="scale_val")
+                # [修正] value=None，placeholder會出現
+                scale_reading_ui = st.number_input(f"3. 數量 ({unit})", step=1.0, key="scale_val", value=None, placeholder="輸入數量")
                 is_zeroed_ui = True 
             else:
-                scale_reading_ui = st.number_input("3. 秤重讀數 (g)", step=0.1, format="%.1f", key="scale_val")
+                # [修正] value=None
+                scale_reading_ui = st.number_input("3. 秤重讀數 (g)", step=0.1, format="%.1f", key="scale_val", value=None, placeholder="輸入重量")
                 st.caption(f"前筆: {last_ref_weight} g ({last_ref_name})")
                 is_zeroed_ui = st.checkbox("⚖️ 已歸零 / 單獨秤重", value=False, key="check_zero")
 
         with c4:
             net_weight_disp = 0.0
             calc_msg_disp = "請輸入"
-            if scale_reading_ui > 0:
+            
+            # [修正] 處理 None
+            scale_val = safe_float(scale_reading_ui)
+            
+            if scale_val > 0:
                 if unit in ["顆", "粒", "錠", "膠囊"]:
-                    net_weight_disp = scale_reading_ui
+                    net_weight_disp = scale_val
                     calc_msg_disp = f"單位: {unit}"
                 else:
                     if is_zeroed_ui:
-                        net_weight_disp = scale_reading_ui
+                        net_weight_disp = scale_val
                         calc_msg_disp = "單獨秤重"
                     else:
-                        if scale_reading_ui < last_ref_weight:
+                        if scale_val < last_ref_weight:
                             calc_msg_disp = "⚠️ 數值異常"
                             net_weight_disp = 0.0
                         else:
-                            net_weight_disp = scale_reading_ui - last_ref_weight
+                            net_weight_disp = scale_val - last_ref_weight
                             calc_msg_disp = f"扣除前筆 {last_ref_weight}"
             
             if "異常" in calc_msg_disp:
@@ -409,7 +406,7 @@ if nav_mode == "➕ 新增食物/藥品":
 
         btn_disabled = False
         if filter_cat == "請選擇..." or item_name == "請先選類別": btn_disabled = True
-        if scale_reading_ui <= 0: btn_disabled = True
+        if scale_val <= 0: btn_disabled = True
         if "異常" in calc_msg_disp: btn_disabled = True 
 
         st.button("⬇️ 加入清單", 
@@ -474,18 +471,6 @@ if nav_mode == "➕ 新增食物/藥品":
                     st.toast("✅ 寫入成功！")
                     st.session_state.cart = []
                     load_data.clear()
-                    
-                    # [重點] 存檔後，將選單推向下一餐
-                    next_index = 0
-                    if meal_name in meal_options:
-                        curr_idx = meal_options.index(meal_name)
-                        if curr_idx < len(meal_options) - 1:
-                            next_index = curr_idx + 1
-                        else:
-                            next_index = curr_idx # 最後一餐就停著
-                    st.session_state.meal_selector = meal_options[next_index]
-                    
-                    clear_finish_inputs()
                     st.session_state.just_saved = True
                     st.rerun()
                 except Exception as e:
@@ -521,13 +506,19 @@ elif nav_mode == "🏁 完食/紀錄剩餘":
         
         c_w1, c_w2 = st.columns(2)
         with c_w1:
-            waste_gross = st.number_input("1. 容器+剩食 總重 (g)", min_value=0.0, step=0.1, key="waste_gross")
+            # [修正] value=None，不顯示 0.00
+            waste_gross = st.number_input("1. 容器+剩食 總重 (g)", min_value=0.0, step=0.1, key="waste_gross", value=None, placeholder="輸入總重")
         with c_w2:
-            waste_tare = st.number_input("2. 容器空重 (g)", min_value=0.0, step=0.1, key="waste_tare")
+            waste_tare = st.number_input("2. 容器空重 (g)", min_value=0.0, step=0.1, key="waste_tare", value=None, placeholder="輸入空重")
         
-        waste_net = waste_gross - waste_tare
+        # 處理 None
+        val_gross = safe_float(waste_gross)
+        val_tare = safe_float(waste_tare)
         
-        if waste_gross > 0 or waste_tare > 0:
+        waste_net = val_gross - val_tare
+        
+        # 只有兩個都輸入才開始計算顯示
+        if waste_gross is not None or waste_tare is not None:
             if waste_net > 0:
                 st.warning(f"📉 實際剩餘淨重：{waste_net:.1f} g")
                 if not df_meal.empty:
@@ -538,7 +529,7 @@ elif nav_mode == "🏁 完食/紀錄剩餘":
                         avg_density = total_in_cal / total_in_weight
                         waste_cal = waste_net * avg_density
                         st.caption(f"預估扣除熱量：{waste_cal:.1f} kcal")
-            elif waste_gross > 0 and waste_net <= 0:
+            elif val_gross > 0 and waste_net <= 0:
                 st.error("空重不能大於總重！")
 
     if st.button("💾 記錄完食/剩餘", type="primary"):
@@ -564,7 +555,8 @@ elif nav_mode == "🏁 完食/紀錄剩餘":
                 sheet_log.append_row(row)
                 st.toast("✅ 完食紀錄已儲存")
                 load_data.clear()
-                clear_finish_inputs()
+                # [修正] 使用函數清空輸入
+                clear_finish_inputs_callback()
                 st.session_state.just_saved = True
                 st.rerun()
             except Exception as e:
