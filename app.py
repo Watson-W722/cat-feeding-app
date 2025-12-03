@@ -5,6 +5,7 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime, timedelta, timezone
 import uuid
+import time # [新增] 用於控制時間
 
 # --- 1. 設定頁面 ---
 st.set_page_config(page_title="大文餵食紀錄", page_icon="🐱", layout="wide")
@@ -28,7 +29,7 @@ def format_time_str(t_str):
         return f"{t_str[:2]}:{t_str[2:]}"
     return t_str if ":" in str(t_str) else get_tw_time().strftime("%H:%M")
 
-# --- 連線設定 (雲端版) ---
+# --- 連線設定 ---
 @st.cache_resource
 def init_connection():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -148,20 +149,31 @@ def clear_finish_inputs():
 # ==========================================
 st.title("🐱 大文餵食紀錄")
 
-# --- [關鍵修正] 初始化狀態與自動捲動 ---
-
-# 1. 初始化 session_state (預設收合 = False)
+# --- 初始化狀態 ---
 if 'dash_open' not in st.session_state: st.session_state.dash_open = False
 if 'meal_open' not in st.session_state: st.session_state.meal_open = False
 if 'just_saved' not in st.session_state: st.session_state.just_saved = False
 if 'finish_radio' not in st.session_state: st.session_state.finish_radio = "全部吃光 (盤光光)"
 
-# 2. 自動捲動邏輯 (JavaScript)
+# --- [修正 1] 強力捲動腳本 ---
+# 針對手機優化：同時捲動 window, body, documentElement, section.main
 if st.session_state.just_saved:
     js = """
     <script>
-        var body = window.parent.document.querySelector(".main");
-        body.scrollTop = 0;
+        // 嘗試多種捲動方式以適配手機瀏覽器
+        window.scrollTo(0, 0);
+        document.body.scrollTop = 0;
+        document.documentElement.scrollTop = 0;
+        
+        // Streamlit 的主容器
+        var main = window.parent.document.querySelector(".main");
+        if (main) { main.scrollTop = 0; }
+        
+        // 雙重保險：延遲 100ms 再捲一次，怕渲染還沒完成
+        setTimeout(function() {
+            window.scrollTo(0, 0);
+            if (main) { main.scrollTop = 0; }
+        }, 100);
     </script>
     """
     components.html(js, height=0)
@@ -195,7 +207,10 @@ if not df_log.empty:
         df_today['Cal_Sub'] = pd.to_numeric(df_today['Cal_Sub'], errors='coerce').fillna(0)
         df_today['Net_Quantity'] = pd.to_numeric(df_today['Net_Quantity'], errors='coerce').fillna(0)
         
-        mask_day_weight = ~df_today['Category'].isin(['藥品', '保養品', '水'])
+        # [修正 3] 嚴格排除水 (增加 '飲用水' 以防萬一)
+        exclude_list = ['藥品', '保養品', '水', '飲用水']
+        mask_day_weight = ~df_today['Category'].isin(exclude_list)
+        
         day_weight = df_today[mask_day_weight]['Net_Quantity'].sum()
         day_cal = df_today['Cal_Sub'].sum()
 
@@ -213,13 +228,13 @@ if not df_log.empty:
                 med_str = "、".join(med_list)
 
 # ----------------------------------------------------
-# 2. 顯示 Dashboard (預設收合)
+# 2. 顯示 Dashboard
 # ----------------------------------------------------
 with st.expander("📊 今日數據統計 (點擊收合)", expanded=st.session_state.dash_open):
     dash_container = st.container()
 
 # ----------------------------------------------------
-# 3. 餐別與碗重設定 (預設收合)
+# 3. 餐別與碗重設定 (含自動跳餐邏輯)
 # ----------------------------------------------------
 recorded_meals = []
 if not df_today.empty:
@@ -227,12 +242,28 @@ if not df_today.empty:
 
 meal_options = ["第一餐", "第二餐", "第三餐", "第四餐", "第五餐", "點心"]
 
+# [修正 2] 自動計算預設餐別 (Auto-Advance)
+default_meal_index = 0
+for i, m in enumerate(meal_options):
+    if m not in recorded_meals:
+        default_meal_index = i
+        break
+    # 如果今天都吃完了，預設就停在最後一餐或點心
+
 with st.expander("🥣 餐別與碗重設定 (點擊收合)", expanded=st.session_state.meal_open):
     c_meal, c_bowl = st.columns(2)
     with c_meal:
         def meal_formatter(m):
             return f"{m} (已記)" if m in recorded_meals else m
-        meal_name = st.selectbox("🍽️ 餐別", meal_options, format_func=meal_formatter)
+        
+        # 使用 index 參數來設定預設值
+        meal_name = st.selectbox(
+            "🍽️ 餐別", 
+            meal_options, 
+            index=default_meal_index, 
+            format_func=meal_formatter,
+            key="meal_selector" # 加入 key 確保狀態穩定
+        )
     
     last_bowl = 30.0
     df_meal = pd.DataFrame()
@@ -264,8 +295,11 @@ meal_weight_sum = 0.0
 if not df_meal.empty:
     df_meal['Cal_Sub'] = pd.to_numeric(df_meal['Cal_Sub'], errors='coerce').fillna(0)
     df_meal['Net_Quantity'] = pd.to_numeric(df_meal['Net_Quantity'], errors='coerce').fillna(0)
-    mask_meal_weight = ~df_meal['Category'].isin(['藥品', '保養品'])
+    
+    # [修正 3] 本餐同步排除水
+    mask_meal_weight = ~df_meal['Category'].isin(['藥品', '保養品', '水', '飲用水'])
     meal_weight_sum = df_meal[mask_meal_weight]['Net_Quantity'].sum()
+    
     meal_cal_sum = df_meal['Cal_Sub'].sum()
 
 dash_container.info(
@@ -449,7 +483,12 @@ with tab2:
     
     st.caption(f"📝 將記錄為：**{finish_time_str}**")
 
-    finish_type = st.radio("狀態", ["全部吃光 (盤光光)", "有剩餘 (需秤重)"], horizontal=True)
+    finish_type = st.radio(
+        "狀態", 
+        ["全部吃光 (盤光光)", "有剩餘 (需秤重)"], 
+        horizontal=True,
+        key="finish_radio"
+    )
     
     waste_net = 0.0
     waste_cal = 0.0
@@ -470,9 +509,12 @@ with tab2:
             if waste_net > 0:
                 st.warning(f"📉 實際剩餘淨重：{waste_net:.1f} g")
                 if not df_meal.empty:
+                    # 計算剩餘熱量時，應使用本餐的平均密度 (含水)
+                    # 這裡的分母應該包含水，所以我們不排除水，只排除之前的剩食記錄
                     meal_foods = df_meal[df_meal['Net_Quantity'].apply(lambda x: safe_float(x)) > 0]
                     total_in_cal = meal_foods['Cal_Sub'].apply(safe_float).sum()
                     total_in_weight = meal_foods['Net_Quantity'].apply(safe_float).sum()
+                    
                     if total_in_weight > 0:
                         avg_density = total_in_cal / total_in_weight
                         waste_cal = waste_net * avg_density
