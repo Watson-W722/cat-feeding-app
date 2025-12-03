@@ -1,4 +1,4 @@
-# 🚀 Python 程式碼 V7.0 (智能權重拆分版)
+# 🚀 Python 程式碼 V7.1 (寫入修復與資料安全版)
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -10,6 +10,12 @@ import uuid
 
 # --- 1. 設定頁面 ---
 st.set_page_config(page_title="大文餵食紀錄", page_icon="🐱", layout="wide")
+
+# --- [新增] 狀態修復邏輯 (必須放在最前面) ---
+# 這裡處理「上一輪」留下的餐別更新請求，避免 "widget instantiated" 錯誤
+if 'pending_meal' in st.session_state:
+    st.session_state.meal_selector = st.session_state.pending_meal
+    del st.session_state.pending_meal
 
 # --- 小工具 ---
 def safe_float(value):
@@ -31,57 +37,38 @@ def format_time_str(t_str):
         return f"{t_str[:2]}:{t_str[2:]}"
     return t_str if ":" in str(t_str) else get_tw_time().strftime("%H:%M")
 
-# [新增] 智能權重拆分計算函式
+# 智能權重拆分計算函式 (V7.0)
 def calculate_intake_breakdown(df):
-    """
-    輸入：一個 DataFrame (某日或某餐的紀錄)
-    輸出：(純食物淨重, 純水淨重)
-    邏輯：
-    1. 區分 正數(投入) 與 負數(剩食)。
-    2. 在投入中，計算「水」與「非水(食物)」的比例。
-    3. 將剩食(負數) 依照該比例分攤給水和食物。
-    4. 回傳扣除後的最終淨重。
-    """
     if df.empty:
         return 0.0, 0.0
     
-    # 清理資料
     if 'Category' in df.columns:
         df['Category'] = df['Category'].astype(str).str.strip()
     
-    # 排除非飲食項目 (藥品/保養品不參與重量計算)
     exclude_list = ['藥品', '保養品']
     df_calc = df[~df['Category'].isin(exclude_list)].copy()
     
     if df_calc.empty:
         return 0.0, 0.0
 
-    # 分離 投入(Input) 與 剩食(Waste)
-    # Net_Quantity > 0 是投入, < 0 是剩食
     df_input = df_calc[df_calc['Net_Quantity'] > 0]
     df_waste = df_calc[df_calc['Net_Quantity'] < 0]
     
-    # 定義水的類別
     water_cats = ['水', '飲用水']
     
-    # 計算投入總量
     input_water = df_input[df_input['Category'].isin(water_cats)]['Net_Quantity'].sum()
     input_food = df_input[~df_input['Category'].isin(water_cats)]['Net_Quantity'].sum()
     total_input = input_water + input_food
     
-    # 計算剩食總量 (這是負數)
     total_waste = df_waste['Net_Quantity'].sum()
     
-    # 計算比例並分攤剩食
     if total_input > 0:
         ratio_water = input_water / total_input
         ratio_food = input_food / total_input
     else:
-        # 如果沒有投入卻有剩食(理論上不應發生，或補登時序問題)，預設全扣食物或各半
         ratio_water = 0.0
         ratio_food = 1.0
         
-    # 最終淨重 = 投入 + (剩食 * 比例)  <-- 注意剩食是負數，所以用加號
     final_water_net = input_water + (total_waste * ratio_water)
     final_food_net = input_food + (total_waste * ratio_food)
     
@@ -142,7 +129,6 @@ def reset_meal_inputs():
 def add_to_cart_callback(bowl_w, last_ref_w, last_ref_n):
     category = st.session_state.get('cat_select', '請選擇...')
     item_name = st.session_state.get('item_select', '請先選類別')
-    
     raw_scale = st.session_state.get('scale_val')
     scale_reading = safe_float(raw_scale)
     is_zeroed = st.session_state.get('check_zero', False)
@@ -217,7 +203,7 @@ if 'meal_open' not in st.session_state: st.session_state.meal_open = False
 if 'just_saved' not in st.session_state: st.session_state.just_saved = False
 if 'finish_radio' not in st.session_state: st.session_state.finish_radio = "全部吃光 (盤光光)"
 
-# 自動捲動
+# 自動捲動邏輯
 if st.session_state.just_saved:
     js = """
     <script>
@@ -246,7 +232,7 @@ with st.sidebar:
         st.rerun()
 
 # ----------------------------------------------------
-# 1. Dashboard 數據計算 (V7.0 智能拆分版)
+# 1. Dashboard 數據計算 (V7.0 智能拆分)
 # ----------------------------------------------------
 df_today = pd.DataFrame()
 day_cal = 0.0
@@ -261,10 +247,7 @@ if not df_log.empty:
         df_today['Cal_Sub'] = pd.to_numeric(df_today['Cal_Sub'], errors='coerce').fillna(0)
         df_today['Net_Quantity'] = pd.to_numeric(df_today['Net_Quantity'], errors='coerce').fillna(0)
         
-        # [V7.0] 使用智能拆分計算
         day_food_net, day_water_net = calculate_intake_breakdown(df_today)
-        
-        # 熱量直接加總 (剩食負數會自動扣除)
         day_cal = df_today['Cal_Sub'].sum()
 
         if 'Category' in df_today.columns:
@@ -284,26 +267,22 @@ with st.expander("📊 今日數據統計 (點擊收合)", expanded=st.session_s
     dash_container = st.container()
 
 # ----------------------------------------------------
-# 2. 餐別設定 (V7.0 擴充選項)
+# 2. 餐別設定
 # ----------------------------------------------------
 recorded_meals = []
 if not df_today.empty:
     recorded_meals = df_today['Meal_Name'].unique().tolist()
 
-# [修正 3] 擴充餐別選項
-meal_options = [
-    "第一餐", "第二餐", "第三餐", "第四餐", "第五餐", 
-    "第六餐", "第七餐", "第八餐", "第九餐", "第十餐", "點心"
-]
+meal_options = ["第一餐", "第二餐", "第三餐", "第四餐", "第五餐", 
+                "第六餐", "第七餐", "第八餐", "第九餐", "第十餐", "點心"]
 
-# 計算預設值
 default_meal_name = meal_options[0]
 for m in meal_options:
     if m not in recorded_meals:
         default_meal_name = m
         break
 
-# Session State 控制
+# 初始化預設餐別 (只做一次)
 if 'meal_selector' not in st.session_state:
     st.session_state.meal_selector = default_meal_name
 
@@ -313,6 +292,7 @@ with st.expander("🥣 餐別與碗重設定 (點擊收合)", expanded=st.sessio
         def meal_formatter(m):
             return f"{m} (已記)" if m in recorded_meals else m
         
+        # [修正] 移除 index，使用 key="meal_selector" 直接控制
         meal_name = st.selectbox(
             "🍽️ 餐別", 
             meal_options, 
@@ -349,7 +329,7 @@ with st.expander("🥣 餐別與碗重設定 (點擊收合)", expanded=st.sessio
             view_df.columns = ['品名', '數量/重量', '熱量']
             st.dataframe(view_df, use_container_width=True, hide_index=True)
 
-# --- 回填 Dashboard (V7.0 智能拆分) ---
+# --- 回填 Dashboard ---
 meal_cal_sum = 0.0
 meal_food_net = 0.0
 meal_water_net = 0.0
@@ -358,12 +338,9 @@ if not df_meal.empty:
     df_meal['Cal_Sub'] = pd.to_numeric(df_meal['Cal_Sub'], errors='coerce').fillna(0)
     df_meal['Net_Quantity'] = pd.to_numeric(df_meal['Net_Quantity'], errors='coerce').fillna(0)
     
-    # [V7.0] 使用函式計算本餐淨重 (依比例扣除剩食)
     meal_food_net, meal_water_net = calculate_intake_breakdown(df_meal)
-    
     meal_cal_sum = df_meal['Cal_Sub'].sum()
 
-# [修正 2] 更新 Dashboard 顯示格式
 dash_container.info(
     f"🔥 **本日**: {day_cal:.0f} kcal / {day_food_net:.1f} g / {day_water_net:.1f} g(水)\n\n"
     f"🍽️ **本餐**: {meal_cal_sum:.0f} kcal / {meal_food_net:.1f} g / {meal_water_net:.1f} g(水)\n\n"
@@ -375,6 +352,7 @@ dash_container.info(
 #      主畫面區塊 3：操作區
 # ==========================================
 
+# 購物車資料安全區 (Session State)
 if 'cart' not in st.session_state:
     st.session_state.cart = []
 
@@ -531,7 +509,8 @@ if nav_mode == "➕ 新增食物/藥品":
                     st.session_state.cart = []
                     load_data.clear()
                     
-                    # 跳到下一餐
+                    # [修正] 寫入成功後，設定下次預設餐別 flag (pending_meal)
+                    # 並觸發自動捲動
                     next_index = 0
                     if meal_name in meal_options:
                         curr_idx = meal_options.index(meal_name)
@@ -539,7 +518,7 @@ if nav_mode == "➕ 新增食物/藥品":
                             next_index = curr_idx + 1
                         else:
                             next_index = curr_idx
-                    st.session_state.meal_selector = meal_options[next_index]
+                    st.session_state.pending_meal = meal_options[next_index]
                     
                     st.session_state.just_saved = True
                     st.rerun()
@@ -588,17 +567,14 @@ elif nav_mode == "🏁 完食/紀錄剩餘":
             if waste_net > 0:
                 st.warning(f"📉 實際剩餘淨重：{waste_net:.1f} g")
                 if not df_meal.empty:
-                    # 使用智能扣除邏輯計算剩餘熱量
-                    # 分母為：食物+水 的總重
-                    meal_net_df = df_meal[df_meal['Net_Quantity'].apply(lambda x: safe_float(x)) > 0]
-                    food_water_cats = ['水', '飲用水']
-                    
-                    # 確保只排除藥品
+                    # 完食計算也使用 V7.0 邏輯
+                    meal_foods = df_meal[df_meal['Net_Quantity'].apply(lambda x: safe_float(x)) > 0]
+                    # 排除藥品保養品計算濃度，但水要算在分母
                     exclude_meds = ['藥品', '保養品']
-                    if 'Category' in meal_net_df.columns:
-                        meal_net_df['Category'] = meal_net_df['Category'].astype(str).str.strip()
-                        calc_df = meal_net_df[~meal_net_df['Category'].isin(exclude_meds)]
-                    
+                    if 'Category' in meal_foods.columns:
+                        meal_foods['Category'] = meal_foods['Category'].astype(str).str.strip()
+                        calc_df = meal_foods[~meal_foods['Category'].isin(exclude_meds)]
+                        
                         total_in_cal = calc_df['Cal_Sub'].apply(safe_float).sum()
                         total_in_weight = calc_df['Net_Quantity'].apply(safe_float).sum()
                         
