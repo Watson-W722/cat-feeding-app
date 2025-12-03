@@ -1,4 +1,4 @@
-#  Python 程式碼 V7.5 (完食邏輯雙重保險版)
+# Python 程式碼 V7.5.2 (變數初始化修復版)
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -36,28 +36,16 @@ def format_time_str(t_str):
         return f"{t_str[:2]}:{t_str[2:]}"
     return t_str if ":" in str(t_str) else get_tw_time().strftime("%H:%M")
 
-# [V7.5 新增] 清洗重複完食紀錄工具
+# [V7.5] 清洗重複完食紀錄工具
 def clean_duplicate_finish_records(df):
-    """
-    傳入一個 DataFrame，針對每一餐，只保留「最後一筆」完食/剩食紀錄。
-    避免資料庫中有重複紀錄導致重複扣除。
-    """
     if df.empty:
         return df
-    
-    # 找出完食紀錄 (WASTE 或 FINISH)
     mask_finish = df['ItemID'].isin(['WASTE', 'FINISH'])
     df_others = df[~mask_finish]
     df_finish = df[mask_finish]
-    
     if df_finish.empty:
         return df
-    
-    # 對完食紀錄進行去重，保留最後一筆 (keep='last')
-    # 假設 Meal_Name 相同就是同一餐
     df_finish_clean = df_finish.drop_duplicates(subset=['Meal_Name'], keep='last')
-    
-    # 合併回原本的資料 (非完食 + 清洗後的完食)
     df_final = pd.concat([df_others, df_finish_clean], ignore_index=True)
     return df_final
 
@@ -66,7 +54,6 @@ def calculate_intake_breakdown(df):
     if df.empty:
         return 0.0, 0.0
     
-    # [V7.5] 先清洗資料，確保剩食只扣一次
     df = clean_duplicate_finish_records(df)
     
     if 'Category' in df.columns:
@@ -215,7 +202,6 @@ def add_to_cart_callback(bowl_w, last_ref_w, last_ref_n):
     st.session_state.meal_open = False
     st.session_state.just_saved = True
 
-# [V7.4] 完食寫入與清除舊紀錄 Callback
 def save_finish_callback(finish_type, waste_net, waste_cal, bowl_w, meal_n, finish_time_str, record_date_obj):
     if finish_type == "有剩餘 (需秤重)" and waste_net <= 0:
         st.session_state.finish_error = "剩餘重量計算錯誤，請檢查輸入數值。"
@@ -239,7 +225,6 @@ def save_finish_callback(finish_type, waste_net, waste_cal, bowl_w, meal_n, fini
     ]
     
     try:
-        # 刪除舊紀錄 (物理刪除)
         current_data = sheet_log.get_all_values()
         header = current_data[0]
         try:
@@ -317,23 +302,27 @@ with st.sidebar:
         load_data.clear()
         st.rerun()
 
-# --- Dashboard ---
+# --- [修正 1] 預先初始化所有變數，避免 NameError ---
 df_today = pd.DataFrame()
 day_cal = 0.0
-day_weight = 0.0
+day_food_net = 0.0
+day_water_net = 0.0
+meal_cal_sum = 0.0
+meal_food_net = 0.0
+meal_water_net = 0.0
 supp_str = "無"
 med_str = "無"
 
 if not df_log.empty:
     df_today = df_log[df_log['Date'] == str_date_filter].copy()
     if not df_today.empty:
-        # [V7.5] 關鍵修正：在計算前，先清洗掉多餘的完食紀錄 (只留最後一筆)
+        # [V7.5] 關鍵修正：在計算前，先清洗掉多餘的完食紀錄
         df_today = clean_duplicate_finish_records(df_today)
         
         df_today['Cal_Sub'] = pd.to_numeric(df_today['Cal_Sub'], errors='coerce').fillna(0)
         df_today['Net_Quantity'] = pd.to_numeric(df_today['Net_Quantity'], errors='coerce').fillna(0)
         
-        # 智能拆分 (使用已清洗的 df)
+        # 智能拆分
         day_food_net, day_water_net = calculate_intake_breakdown(df_today)
         day_cal = df_today['Cal_Sub'].sum()
 
@@ -412,18 +401,13 @@ with st.expander("🥣 餐別與碗重設定 (點擊收合)", expanded=st.sessio
             view_df.columns = ['品名', '數量/重量', '熱量']
             st.dataframe(view_df, use_container_width=True, hide_index=True)
 
-# --- Dashboard 回填 ---
-meal_cal_sum = 0.0
-meal_food_net = 0.0
-meal_water_net = 0.0
-
+# --- 回填 Dashboard ---
 if not df_meal.empty:
     df_meal['Cal_Sub'] = pd.to_numeric(df_meal['Cal_Sub'], errors='coerce').fillna(0)
     df_meal['Net_Quantity'] = pd.to_numeric(df_meal['Net_Quantity'], errors='coerce').fillna(0)
     
-    # [V7.5] 計算本餐時，也同樣進行去重清洗
+    # [V7.5] 本餐去重 + 拆分
     df_meal_clean = clean_duplicate_finish_records(df_meal)
-    
     meal_food_net, meal_water_net = calculate_intake_breakdown(df_meal_clean)
     meal_cal_sum = df_meal_clean['Cal_Sub'].sum()
 
@@ -445,7 +429,6 @@ last_reading_db = bowl_weight
 last_item_db = "碗"
 if not df_meal.empty:
     try:
-        # 排除完食紀錄，找最後一筆食物的秤重
         df_food_only = df_meal[~df_meal['ItemID'].isin(['WASTE', 'FINISH'])]
         if not df_food_only.empty:
             last_reading_db = float(df_food_only.iloc[-1]['Scale_Reading'])
@@ -635,10 +618,6 @@ elif nav_mode == "🏁 完食/紀錄剩餘":
     waste_net = 0.0
     waste_cal = 0.0
     
-    # 顯示錯誤訊息
-    if st.session_state.finish_error:
-        st.error(st.session_state.finish_error)
-
     if finish_type == "有剩餘 (需秤重)":
         st.markdown("---")
         st.caption("請輸入「倒掉時」的秤重數據：")
@@ -657,8 +636,7 @@ elif nav_mode == "🏁 完食/紀錄剩餘":
             if waste_net > 0:
                 st.warning(f"📉 實際剩餘淨重：{waste_net:.1f} g")
                 if not df_meal.empty:
-                    # [V7.5] 使用清洗後的 df 計算剩餘扣除熱量
-                    # (排除舊的完食紀錄)
+                    # [V7.5] 這裡也用清洗後的 df
                     df_meal_clean = clean_duplicate_finish_records(df_meal)
                     meal_foods = df_meal_clean[df_meal_clean['Net_Quantity'].apply(lambda x: safe_float(x)) > 0]
                     
