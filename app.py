@@ -1,4 +1,3 @@
-# 🚀 Python 程式碼 V5.0 (穩定版面 + 總計功能)
 import streamlit as st
 import pandas as pd
 import gspread
@@ -134,18 +133,15 @@ def add_to_cart_callback(bowl_w, last_ref_w, last_ref_n):
     # 重置輸入框
     st.session_state.scale_val = 0.0
     st.session_state.check_zero = False
-    
-    # [修正] 移除自動收合功能，保持畫面高度穩定，防止跑版
-    # st.session_state.expander_open = False 
 
 # ==========================================
 #      UI 佈局開始
 # ==========================================
 st.title("🐱 大文餵食紀錄")
 
-# 初始化收合狀態 (如果沒有就設為 True)
-if 'dash_open' not in st.session_state: st.session_state.dash_open = True
-if 'meal_open' not in st.session_state: st.session_state.meal_open = True
+# [修正 1] 初始化收合狀態，預設為 False (收起)
+if 'dash_open' not in st.session_state: st.session_state.dash_open = False
+if 'meal_open' not in st.session_state: st.session_state.meal_open = False
 
 with st.sidebar:
     st.header("⚙️ 設定")
@@ -192,11 +188,9 @@ if not df_log.empty:
                 med_str = "、".join(med_list)
 
 # ----------------------------------------------------
-# 2. 顯示 Dashboard (可收合)
+# 2. 顯示 Dashboard
 # ----------------------------------------------------
-# [修正] 數據區塊加入 Expander
 with st.expander("📊 今日數據統計 (點擊收合)", expanded=st.session_state.dash_open):
-    # 使用 container 來放置 metric，稍後回填
     dash_container = st.container()
 
 # ----------------------------------------------------
@@ -283,7 +277,9 @@ tab1, tab2 = st.tabs(["➕ 新增食物/藥品", "🏁 完食/紀錄剩餘"])
 
 # --- Tab 1: 新增 ---
 with tab1:
-    # 這裡的 Expander 可以預設展開，代表這是主要工作區
+    # [修正 2] 顯示目前編輯的餐別
+    st.info(f"🍽️ 目前編輯：**{meal_name}**")
+    
     with st.container(border=True):
         c1, c2 = st.columns(2)
         with c1:
@@ -343,7 +339,6 @@ with tab1:
         if scale_reading_ui <= 0: btn_disabled = True
         if "異常" in calc_msg_disp: btn_disabled = True 
 
-        # 按下按鈕後，因為沒有縮合上方的 Expander，所以畫面高度變化不大，不會亂跳
         st.button("⬇️ 加入清單", 
                   type="secondary", 
                   use_container_width=True, 
@@ -356,20 +351,15 @@ with tab1:
         st.write("##### 🛒 待存清單 (可編輯)")
         df_cart = pd.DataFrame(st.session_state.cart)
         
-        # [修正 4] 新增總計列 (顯示用)
-        # 計算總和
+        # 總計列邏輯
         sum_net = df_cart[~df_cart['Category'].isin(['藥品', '保養品'])]['Net_Quantity'].sum()
         sum_cal = df_cart['Cal_Sub'].sum()
-        
-        # 建立一筆總計資料
         total_row = pd.DataFrame([{
             "Item_Name": "∑ 總計 (不含藥)", 
             "Net_Quantity": sum_net, 
             "Cal_Sub": sum_cal,
-            "Category": "Total_Row" # 標記這是總計行
+            "Category": "Total_Row"
         }])
-        
-        # 合併顯示
         display_df = pd.concat([df_cart, total_row], ignore_index=True)
         
         edited_df = st.data_editor(
@@ -393,7 +383,6 @@ with tab1:
                 timestamp = f"{str_date} {str_time}"
 
                 for i, row_data in edited_df.iterrows():
-                    # [修正 4] 寫入時過濾掉總計行
                     if row_data.get('Category') == "Total_Row" or row_data.get('Item_Name') == "∑ 總計 (不含藥)":
                         continue
 
@@ -413,15 +402,15 @@ with tab1:
                     st.toast("✅ 寫入成功！")
                     st.session_state.cart = []
                     load_data.clear()
-                    # 存檔後保持 Dashboard 展開
-                    st.session_state.dash_open = True
                     st.rerun()
                 except Exception as e:
                     st.error(f"寫入失敗：{e}")
 
-# ... (完食區 Tab 2 維持 V4.7 不變，請保留原樣) ...
+# --- Tab 2: 完食 ---
 with tab2:
-    st.info("紀錄完食時間，若有剩餘，請將剩食倒入新容器(或原碗)秤重")
+    # [修正 2] 顯示目前編輯的餐別
+    st.info(f"🍽️ 目前編輯：**{meal_name}**")
+    st.caption("紀錄完食時間，若有剩餘，請將剩食倒入新容器(或原碗)秤重")
     
     default_now = get_tw_time().strftime("%H%M")
     
@@ -492,7 +481,6 @@ with tab2:
                 sheet_log.append_row(row)
                 st.toast("✅ 完食紀錄已儲存")
                 load_data.clear()
-                # 完食後不需重置 expander 狀態，維持原樣
                 st.rerun()
             except Exception as e:
                 st.error(f"寫入失敗：{e}")
