@@ -1,4 +1,4 @@
-# Python 程式碼 V7.8 (React 風格 UI 升級版)
+# Python 程式碼 V7.9 (補回遺失函式修正版)
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -30,6 +30,31 @@ def format_time_str(t_str):
     if len(t_str) == 4 and t_str.isdigit():
         return f"{t_str[:2]}:{t_str[2:]}"
     return t_str if ":" in str(t_str) else get_tw_time().strftime("%H:%M")
+
+# [V7.9 修正] 補回遺失的函式：清洗重複完食紀錄
+def clean_duplicate_finish_records(df):
+    """
+    傳入一個 DataFrame，針對每一餐，只保留「最後一筆」完食/剩食紀錄。
+    避免資料庫中有重複紀錄導致重複扣除。
+    """
+    if df.empty:
+        return df
+    
+    # 找出完食紀錄 (WASTE 或 FINISH)
+    mask_finish = df['ItemID'].isin(['WASTE', 'FINISH'])
+    df_others = df[~mask_finish]
+    df_finish = df[mask_finish]
+    
+    if df_finish.empty:
+        return df
+    
+    # 對完食紀錄進行去重，保留最後一筆 (keep='last')
+    # 假設 Meal_Name 相同就是同一餐
+    df_finish_clean = df_finish.drop_duplicates(subset=['Meal_Name'], keep='last')
+    
+    # 合併回原本的資料 (非完食 + 清洗後的完食)
+    df_final = pd.concat([df_others, df_finish_clean], ignore_index=True)
+    return df_final
 
 # 智能權重拆分計算函式 (V7.0)
 def calculate_intake_breakdown(df):
@@ -148,22 +173,18 @@ def render_dashboard_html(day_stats, meal_stats, supp_list, med_list):
             """
         return html
 
-    # 組合本日數據 (這裡假設一個每日目標供進度條顯示，可自訂)
-    # 熱量目標假定 250, 蛋白質 60
+    # 組合本日數據
     daily_html = f"""
     <div class="dashboard-card">
         <div class="section-title">
             <div class="section-icon bg-orange">{icons['activity']}</div>
             本日總計
-            <span style="margin-left:auto; font-size:12px; background:#fff7ed; color:#f97316; padding:2px 8px; border-radius:99px; font-weight:600;">
-                {int(day_stats['cal'] / 2.5)}% (目標假定)
-            </span>
         </div>
         <div class="grid-stats">
-            {get_stat_html("flame", "熱量", int(day_stats['cal']), "kcal", "bg-orange", "#f97316", day_stats['cal']/2.5)}
+            {get_stat_html("flame", "熱量", int(day_stats['cal']), "kcal", "bg-orange", "#f97316", day_stats['cal']/250)}
             {get_stat_html("utensils", "食物", f"{day_stats['food']:.1f}", "g", "bg-blue", "#3b82f6")}
             {get_stat_html("droplets", "飲水", f"{day_stats['water']:.1f}", "ml", "bg-cyan", "#06b6d4")}
-            {get_stat_html("beef", "蛋白質", f"{day_stats['prot']:.1f}", "g", "bg-red", "#ef4444", day_stats['prot']/0.6)}
+            {get_stat_html("beef", "蛋白質", f"{day_stats['prot']:.1f}", "g", "bg-red", "#ef4444")}
             {get_stat_html("dna", "脂肪", f"{day_stats['fat']:.1f}", "g", "bg-yellow", "#eab308")}
         </div>
     </div>
@@ -395,16 +416,15 @@ def clear_finish_inputs_callback():
 # ==========================================
 st.title("🐱 大文餵食紀錄")
 
-if 'dash_open' not in st.session_state: st.session_state.dash_open = True # 預設展開讓使用者看到新UI
+# 初始化狀態
+if 'dash_open' not in st.session_state: st.session_state.dash_open = False
 if 'meal_open' not in st.session_state: st.session_state.meal_open = False
 if 'just_saved' not in st.session_state: st.session_state.just_saved = False
 if 'finish_radio' not in st.session_state: st.session_state.finish_radio = "全部吃光 (盤光光)"
 if 'nav_mode' not in st.session_state: st.session_state.nav_mode = "➕ 新增食物/藥品"
 if 'finish_error' not in st.session_state: st.session_state.finish_error = None
-if 'pending_meal' in st.session_state:
-    st.session_state.meal_selector = st.session_state.pending_meal
-    del st.session_state.pending_meal
 
+# 自動捲動
 if st.session_state.just_saved:
     js = """
     <script>
@@ -458,7 +478,7 @@ if not df_log.empty:
         day_stats['fat'] = df_today['Fat_Sub'].sum()
 
         if 'Category' in df_today.columns:
-            # 準備保養品列表 List of Dicts
+            # 準備保養品列表
             df_supp = df_today[df_today['Category'] == '保養品']
             if not df_supp.empty:
                 counts = df_supp.groupby('Item_Name')['Net_Quantity'].sum()
@@ -472,8 +492,7 @@ if not df_log.empty:
 
 # --- 2. Dashboard (React Style) ---
 with st.expander("📊 今日數據統計 (點擊收合)", expanded=st.session_state.dash_open):
-    # 這裡我們使用一個空的 container，稍後再把計算好的 HTML 填進去
-    # 但因為計算邏輯需要 meal_name，所以我們先保留 placeholder
+    # 使用新的渲染函式
     dashboard_ph = st.empty()
 
 # --- 3. 餐別設定 ---
@@ -589,7 +608,6 @@ nav_mode = st.radio(
 
 # --- 模式 1: 新增 ---
 if nav_mode == "➕ 新增食物/藥品":
-    # 顯示簡單標題
     st.markdown(f"##### 🍽️ 編輯：{meal_name}")
     
     with st.container(border=True):
@@ -683,12 +701,14 @@ if nav_mode == "➕ 新增食物/藥品":
             try:
                 edited_df['Net_Quantity'] = pd.to_numeric(edited_df['Net_Quantity'], errors='coerce').fillna(0)
                 edited_df['Cal_Sub'] = pd.to_numeric(edited_df['Cal_Sub'], errors='coerce').fillna(0)
+                
                 mask_total = ~edited_df['Category'].isin(['藥品', '保養品'])
                 live_sum_net = edited_df[mask_total]['Net_Quantity'].sum()
                 live_sum_cal = edited_df['Cal_Sub'].sum()
+                
                 st.info(f"∑ 總計 (不含藥)：{live_sum_net:.1f} g  |  🔥 {live_sum_cal:.1f} kcal")
             except:
-                pass
+                st.caption("計算中...")
 
         if st.button("💾 儲存寫入 Google Sheet", type="primary", use_container_width=True):
             with st.spinner("寫入中..."):
@@ -731,7 +751,7 @@ if nav_mode == "➕ 新增食物/藥品":
 
 # --- 模式 2: 完食 ---
 elif nav_mode == "🏁 完食/紀錄剩餘":
-    st.markdown(f"##### 🍽️ 編輯：{meal_name}")
+    st.info(f"🍽️ 目前編輯：**{meal_name}**")
     st.caption("紀錄完食時間，若有剩餘，請將剩食倒入新容器(或原碗)秤重")
     
     finish_date = st.date_input("完食日期", value=record_date, key="finish_date_picker")
@@ -771,8 +791,10 @@ elif nav_mode == "🏁 完食/紀錄剩餘":
             if waste_net > 0:
                 st.warning(f"📉 實際剩餘淨重：{waste_net:.1f} g")
                 if not df_meal.empty:
-                    # 計算平均密度
-                    meal_foods = df_meal[df_meal['Net_Quantity'].apply(lambda x: safe_float(x)) > 0]
+                    # [V7.5] 使用清洗後的 df 計算剩餘扣除熱量
+                    df_meal_clean = clean_duplicate_finish_records(df_meal)
+                    meal_foods = df_meal_clean[df_meal_clean['Net_Quantity'].apply(lambda x: safe_float(x)) > 0]
+                    
                     exclude_meds = ['藥品', '保養品']
                     if 'Category' in meal_foods.columns:
                         meal_foods['Category'] = meal_foods['Category'].astype(str).str.strip()
