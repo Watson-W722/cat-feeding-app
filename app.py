@@ -344,7 +344,7 @@ if not df_meal.empty:
 dash_container.info(
     f"🔥 **本日**: {day_cal:.0f} kcal / {day_food_net:.1f} g / {day_water_net:.1f} g(水)\n\n"
     f"🍽️ **本餐**: {meal_cal_sum:.0f} kcal / {meal_food_net:.1f} g / {meal_water_net:.1f} g(水)\n\n"
-    f"💊 **保養**: {supp_str}\n\n"
+    f"🌿 **保養**: {supp_str}\n\n"
     f"💊 **藥品**: {med_str}"
 )
 
