@@ -1,6 +1,6 @@
 #  Python 程式碼 V7.5 (完食邏輯雙重保險版)
 
-iimport streamlit as st
+import streamlit as st
 import streamlit.components.v1 as components
 import pandas as pd
 import gspread
