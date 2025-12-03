@@ -745,3 +745,5 @@ elif nav_mode == "🏁 完食/紀錄剩餘":
               on_click=save_finish_callback,
               args=(finish_type, waste_net, waste_cal, bowl_weight, meal_name, fmt_finish_time, finish_date)
     )
+
+    # Force update V8.0 fix
