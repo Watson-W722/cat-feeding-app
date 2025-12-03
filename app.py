@@ -1,4 +1,4 @@
-# 🚀 Python 程式碼 V6.1 (整合修正最終版)
+# 🚀 Python 程式碼 V6.2 (補上飲用水排除修正版)
 import streamlit as st
 import streamlit.components.v1 as components
 import pandas as pd
@@ -29,7 +29,7 @@ def format_time_str(t_str):
         return f"{t_str[:2]}:{t_str[2:]}"
     return t_str if ":" in str(t_str) else get_tw_time().strftime("%H:%M")
 
-# --- 連線設定 ---
+# --- 連線設定 (雲端版) ---
 @st.cache_resource
 def init_connection():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -74,18 +74,13 @@ else:
 #      邏輯函數區 (Callback)
 # ==========================================
 
-# [整合 V5.8] 切換餐別時的重置函式
+# 切換餐別時的重置函式
 def reset_meal_inputs():
-    # 清空新增區的秤重
     st.session_state.scale_val = 0.0
     st.session_state.check_zero = False
-    
-    # 清空完食區的輸入
     st.session_state.waste_gross = 0.0
     st.session_state.waste_tare = 0.0
-    # 重置完食狀態為預設
     st.session_state.finish_radio = "全部吃光 (盤光光)"
-    # (日期時間不重置，保留操作便利性)
 
 def add_to_cart_callback(bowl_w, last_ref_w, last_ref_n):
     category = st.session_state.get('cat_select', '請選擇...')
@@ -97,6 +92,7 @@ def add_to_cart_callback(bowl_w, last_ref_w, last_ref_n):
         return
 
     unit = unit_map.get(item_name, "g")
+    
     net_weight = 0.0
     db_scale_reading = scale_reading
     
@@ -147,7 +143,6 @@ def add_to_cart_callback(bowl_w, last_ref_w, last_ref_n):
     st.session_state.scale_val = 0.0
     st.session_state.check_zero = False
     
-    # 加入後自動收起上方設定，並觸發捲動
     st.session_state.meal_open = False
     st.session_state.just_saved = True
 
@@ -160,14 +155,12 @@ def clear_finish_inputs():
 # ==========================================
 st.title("🐱 大文餵食紀錄")
 
-# 初始化狀態
 if 'dash_open' not in st.session_state: st.session_state.dash_open = False
 if 'meal_open' not in st.session_state: st.session_state.meal_open = False
 if 'just_saved' not in st.session_state: st.session_state.just_saved = False
 if 'finish_radio' not in st.session_state: st.session_state.finish_radio = "全部吃光 (盤光光)"
-if 'nav_mode' not in st.session_state: st.session_state.nav_mode = "➕ 新增食物/藥品"
 
-# 自動捲動邏輯
+# 自動捲動
 if st.session_state.just_saved:
     js = """
     <script>
@@ -190,12 +183,10 @@ with st.sidebar:
     record_time_str = format_time_str(raw_record_time)
     st.caption(f"將記錄為：{record_time_str}")
     st.caption("輸入數字後，點擊空白處即可生效")
-    
-    if st.button("🔄 重新整理數據"):
-        load_data.clear()
-        st.rerun()
 
-# --- 1. 預算 Dashboard 數據 ---
+# ----------------------------------------------------
+# 1. 預算 Dashboard 數據
+# ----------------------------------------------------
 df_today = pd.DataFrame()
 day_cal = 0.0
 day_weight = 0.0
@@ -208,7 +199,10 @@ if not df_log.empty:
         df_today['Cal_Sub'] = pd.to_numeric(df_today['Cal_Sub'], errors='coerce').fillna(0)
         df_today['Net_Quantity'] = pd.to_numeric(df_today['Net_Quantity'], errors='coerce').fillna(0)
         
-        mask_day_weight = ~df_today['Category'].isin(['藥品', '保養品', '水'])
+        # [關鍵修正] 擴大排除名單 (包含 '飲用水')
+        exclude_list = ['藥品', '保養品', '水', '飲用水']
+        mask_day_weight = ~df_today['Category'].isin(exclude_list)
+        
         day_weight = df_today[mask_day_weight]['Net_Quantity'].sum()
         day_cal = df_today['Cal_Sub'].sum()
 
@@ -225,17 +219,22 @@ if not df_log.empty:
                 med_list = [f"{name}({int(val)})" for name, val in med_counts.items()]
                 med_str = "、".join(med_list)
 
-# --- 2. 顯示 Dashboard (置頂) ---
+# ----------------------------------------------------
+# 2. 顯示 Dashboard
+# ----------------------------------------------------
 with st.expander("📊 今日數據統計 (點擊收合)", expanded=st.session_state.dash_open):
     dash_container = st.container()
 
-# --- 3. 餐別與碗重設定 ---
+# ----------------------------------------------------
+# 3. 餐別與碗重設定
+# ----------------------------------------------------
 recorded_meals = []
 if not df_today.empty:
     recorded_meals = df_today['Meal_Name'].unique().tolist()
 
 meal_options = ["第一餐", "第二餐", "第三餐", "第四餐", "第五餐", "點心"]
 
+# Auto-Advance
 default_meal_index = 0
 for i, m in enumerate(meal_options):
     if m not in recorded_meals:
@@ -248,7 +247,6 @@ with st.expander("🥣 餐別與碗重設定 (點擊收合)", expanded=st.sessio
         def meal_formatter(m):
             return f"{m} (已記)" if m in recorded_meals else m
         
-        # [整合修正 1] 加入 on_change=reset_meal_inputs
         meal_name = st.selectbox(
             "🍽️ 餐別", 
             meal_options, 
@@ -276,7 +274,6 @@ with st.expander("🥣 餐別與碗重設定 (點擊收合)", expanded=st.sessio
     if not df_meal.empty:
         with st.expander(f"📜 查看 {meal_name} 已記錄明細"):
             view_df = df_meal[['Item_Name', 'Net_Quantity', 'Cal_Sub', 'Time']].copy()
-            # [整合修正 4] 明細顯示時間
             def append_time_to_finish(row):
                 if '完食' in str(row['Item_Name']):
                     time_str = str(row['Time'])[:5]
@@ -294,6 +291,7 @@ meal_weight_sum = 0.0
 if not df_meal.empty:
     df_meal['Cal_Sub'] = pd.to_numeric(df_meal['Cal_Sub'], errors='coerce').fillna(0)
     df_meal['Net_Quantity'] = pd.to_numeric(df_meal['Net_Quantity'], errors='coerce').fillna(0)
+    # 本餐總重 (包含水，僅排除藥品保養品)
     mask_meal_weight = ~df_meal['Category'].isin(['藥品', '保養品'])
     meal_weight_sum = df_meal[mask_meal_weight]['Net_Quantity'].sum()
     meal_cal_sum = df_meal['Cal_Sub'].sum()
@@ -306,16 +304,8 @@ dash_container.info(
 )
 
 # ==========================================
-#      主畫面區塊 3：操作區 (Radio 導航)
+#      主畫面區塊 3：操作區
 # ==========================================
-
-nav_mode = st.radio(
-    "操作模式", 
-    ["➕ 新增食物/藥品", "🏁 完食/紀錄剩餘"], 
-    horizontal=True,
-    label_visibility="collapsed",
-    key="nav_mode"
-)
 
 if 'cart' not in st.session_state:
     st.session_state.cart = []
@@ -336,8 +326,10 @@ else:
     last_ref_weight = last_reading_db
     last_ref_name = last_item_db
 
-# --- 模式 1: 新增 ---
-if nav_mode == "➕ 新增食物/藥品":
+tab1, tab2 = st.tabs(["➕ 新增食物/藥品", "🏁 完食/紀錄剩餘"])
+
+# --- Tab 1: 新增 ---
+with tab1:
     st.info(f"🍽️ 目前編輯：**{meal_name}**")
     
     with st.container(border=True):
@@ -466,23 +458,28 @@ if nav_mode == "➕ 新增食物/藥品":
                 except Exception as e:
                     st.error(f"寫入失敗：{e}")
 
-# --- 模式 2: 完食 ---
-elif nav_mode == "🏁 完食/紀錄剩餘":
+# --- Tab 2: 完食 ---
+with tab2:
     st.info(f"🍽️ 目前編輯：**{meal_name}**")
     st.caption("紀錄完食時間，若有剩餘，請將剩食倒入新容器(或原碗)秤重")
     
-    # [整合修正 2] 完食日期
     finish_date = st.date_input("完食日期", value=record_date, key="finish_date_picker")
     str_finish_date = finish_date.strftime("%Y/%m/%d")
     
-    # [整合修正 2] 完食時間
     default_now = get_tw_time().strftime("%H%M")
-    raw_end = st.text_input("完食時間 (如 0700)", value=default_now, key="finish_time_input")
-    fmt_end = format_time_str(raw_end)
     
-    st.caption(f"📝 將記錄為：{str_finish_date} **{fmt_end}**")
+    c_t1, c_t2 = st.columns(2)
+    with c_t1:
+        raw_start = st.text_input("開始時間 (如 0639)", value=default_now, key="t_start")
+    with c_t2:
+        raw_end = st.text_input("結束時間 (如 0700)", value=default_now, key="t_end")
+    
+    fmt_start = format_time_str(raw_start)
+    fmt_end = format_time_str(raw_end)
+    finish_time_str = f"{fmt_start} - {fmt_end}"
+    
+    st.caption(f"📝 將記錄為：{str_finish_date} **{finish_time_str}**")
 
-    # [整合修正 3] 完食狀態 (不跳頁)
     finish_type = st.radio(
         "狀態", 
         ["全部吃光 (盤光光)", "有剩餘 (需秤重)"], 
@@ -536,7 +533,7 @@ elif nav_mode == "🏁 完食/紀錄剩餘":
                 item_id_code, category_code, 0, bowl_weight, 
                 final_waste_net, final_waste_cal, 
                 0, 0, 0, "",
-                "完食紀錄", str_time_finish
+                "完食紀錄", finish_time_str
             ]
             try:
                 sheet_log.append_row(row)
