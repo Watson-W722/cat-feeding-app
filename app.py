@@ -28,7 +28,7 @@ def format_time_str(t_str):
         return f"{t_str[:2]}:{t_str[2:]}"
     return t_str if ":" in str(t_str) else get_tw_time().strftime("%H:%M")
 
-# --- 連線設定 ---
+# --- 連線設定 (雲端版) ---
 @st.cache_resource
 def init_connection():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -134,7 +134,9 @@ def add_to_cart_callback(bowl_w, last_ref_w, last_ref_n):
     st.session_state.scale_val = 0.0
     st.session_state.check_zero = False
     
-    # 成功加入後，設定標記讓畫面捲動到頂端
+    # 加入後，確保設定區是收合的
+    st.session_state.meal_open = False
+    # 設定旗標，觸發自動捲動
     st.session_state.just_saved = True
 
 def clear_finish_inputs():
@@ -146,13 +148,15 @@ def clear_finish_inputs():
 # ==========================================
 st.title("🐱 大文餵食紀錄")
 
-# --- [關鍵修正] 初始化一定要放在最前面 ---
-if 'dash_open' not in st.session_state: st.session_state.dash_open = True
-if 'meal_open' not in st.session_state: st.session_state.meal_open = True
+# --- [關鍵修正] 初始化狀態與自動捲動 ---
+
+# 1. 初始化 session_state (預設收合 = False)
+if 'dash_open' not in st.session_state: st.session_state.dash_open = False
+if 'meal_open' not in st.session_state: st.session_state.meal_open = False
 if 'just_saved' not in st.session_state: st.session_state.just_saved = False
 if 'finish_radio' not in st.session_state: st.session_state.finish_radio = "全部吃光 (盤光光)"
 
-# 自動捲動邏輯
+# 2. 自動捲動邏輯 (JavaScript)
 if st.session_state.just_saved:
     js = """
     <script>
@@ -209,13 +213,13 @@ if not df_log.empty:
                 med_str = "、".join(med_list)
 
 # ----------------------------------------------------
-# 2. 顯示 Dashboard (現在 dash_open 已經被定義了)
+# 2. 顯示 Dashboard (預設收合)
 # ----------------------------------------------------
 with st.expander("📊 今日數據統計 (點擊收合)", expanded=st.session_state.dash_open):
     dash_container = st.container()
 
 # ----------------------------------------------------
-# 3. 餐別與碗重設定
+# 3. 餐別與碗重設定 (預設收合)
 # ----------------------------------------------------
 recorded_meals = []
 if not df_today.empty:
@@ -431,29 +435,21 @@ with tab2:
     st.info(f"🍽️ 目前編輯：**{meal_name}**")
     st.caption("紀錄完食時間，若有剩餘，請將剩食倒入新容器(或原碗)秤重")
     
-    finish_date = st.date_input("完食日期", value=record_date)
-    str_finish_date = finish_date.strftime("%Y/%m/%d")
-    
-    tw_now_hm = get_tw_time().strftime("%H%M")
+    default_now = get_tw_time().strftime("%H%M")
     
     c_t1, c_t2 = st.columns(2)
     with c_t1:
-        raw_start = st.text_input("開始時間 (如 0639)", value=tw_now_hm, key="t_start")
+        raw_start = st.text_input("開始時間 (如 0639)", value=default_now, key="t_start")
     with c_t2:
-        raw_end = st.text_input("結束時間 (如 0700)", value=tw_now_hm, key="t_end")
+        raw_end = st.text_input("結束時間 (如 0700)", value=default_now, key="t_end")
     
     fmt_start = format_time_str(raw_start)
     fmt_end = format_time_str(raw_end)
     finish_time_str = f"{fmt_start} - {fmt_end}"
     
-    st.caption(f"📝 將記錄為：**{finish_time_str}** (日期: {str_finish_date})")
+    st.caption(f"📝 將記錄為：**{finish_time_str}**")
 
-    finish_type = st.radio(
-        "狀態", 
-        ["全部吃光 (盤光光)", "有剩餘 (需秤重)"], 
-        horizontal=True,
-        key="finish_radio"
-    )
+    finish_type = st.radio("狀態", ["全部吃光 (盤光光)", "有剩餘 (需秤重)"], horizontal=True)
     
     waste_net = 0.0
     waste_cal = 0.0
@@ -488,8 +484,9 @@ with tab2:
         if finish_type == "有剩餘 (需秤重)" and waste_net <= 0:
             st.error("剩餘重量計算錯誤，請檢查輸入數值。")
         else:
+            str_date = record_date.strftime("%Y/%m/%d")
             str_time_finish = f"{fmt_end}:00"
-            timestamp = f"{str_finish_date} {str_time_finish}"
+            timestamp = f"{str_date} {str_time_finish}"
             
             final_waste_net = -waste_net if finish_type == "有剩餘 (需秤重)" else 0
             final_waste_cal = -waste_cal if finish_type == "有剩餘 (需秤重)" else 0
@@ -497,7 +494,7 @@ with tab2:
             category_code = "剩食" if finish_type == "有剩餘 (需秤重)" else "完食"
 
             row = [
-                str(uuid.uuid4()), timestamp, str_finish_date, str_time_finish, meal_name,
+                str(uuid.uuid4()), timestamp, str_date, str_time_finish, meal_name,
                 item_id_code, category_code, 0, bowl_weight, 
                 final_waste_net, final_waste_cal, 
                 0, 0, 0, "",
