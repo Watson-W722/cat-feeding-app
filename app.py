@@ -129,7 +129,7 @@ def render_dashboard_html(day_stats, meal_stats, supp_list, med_list):
         return html
 
     # 本日
-    daily_html = f"""
+    daily_html = f
     <div class="dashboard-card">
         <div class="section-title"><div class="section-icon bg-orange">{icons['activity']}</div>本日總計</div>
         <div class="grid-stats">
@@ -140,9 +140,9 @@ def render_dashboard_html(day_stats, meal_stats, supp_list, med_list):
             {get_stat_html("dna", "脂肪", f"{day_stats['fat']:.1f}", "g", "bg-yellow", "#eab308")}
         </div>
     </div>
-    """
+    
     # 本餐
-    meal_html = f"""
+    meal_html = f
     <div class="dashboard-card">
         <div class="section-title">
             <div class="section-icon bg-blue">{icons['utensils']}</div>本餐小計
@@ -156,9 +156,9 @@ def render_dashboard_html(day_stats, meal_stats, supp_list, med_list):
             {get_stat_html("dna", "脂肪", f"{meal_stats['fat']:.1f}", "g", "bg-yellow", "#eab308")}
         </div>
     </div>
-    """
+    
     # 藥品
-    supp_med_html = f"""
+    supp_med_html = f
     <div class="dashboard-card">
         <div class="section-title"><div class="section-icon bg-green" style="background:#ecfdf5; color:#047857;">{icons['pill']}</div>保養與藥品紀錄</div>
         <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px;">
@@ -166,7 +166,7 @@ def render_dashboard_html(day_stats, meal_stats, supp_list, med_list):
             <div><div style="font-size:11px; font-weight:700; color:#94a3b8; margin-bottom:8px; text-transform:uppercase;">藥品清單</div><div class="tag-container">{get_tag_html(med_list, "tag-red", "pill")}</div></div>
         </div>
     </div>
-    """
+    
     return style + daily_html + meal_html + supp_med_html
 
 # --- 連線設定 ---
