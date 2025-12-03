@@ -1,4 +1,4 @@
-#  Python 程式碼 V6.4 (完食時間單一化修正版)
+# Python 程式碼 V6.5 (強力除錯與統計修正版)
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -154,13 +154,11 @@ def clear_finish_inputs():
 # ==========================================
 st.title("🐱 大文餵食紀錄")
 
-# 初始化狀態
 if 'dash_open' not in st.session_state: st.session_state.dash_open = False
 if 'meal_open' not in st.session_state: st.session_state.meal_open = False
 if 'just_saved' not in st.session_state: st.session_state.just_saved = False
 if 'finish_radio' not in st.session_state: st.session_state.finish_radio = "全部吃光 (盤光光)"
 
-# 自動捲動邏輯
 if st.session_state.just_saved:
     js = """
     <script>
@@ -188,7 +186,7 @@ with st.sidebar:
         load_data.clear()
         st.rerun()
 
-# --- Dashboard ---
+# --- Dashboard 數據計算 (V6.5 強力修正) ---
 df_today = pd.DataFrame()
 day_cal = 0.0
 day_weight = 0.0
@@ -198,14 +196,20 @@ med_str = "無"
 if not df_log.empty:
     df_today = df_log[df_log['Date'] == str_date_filter].copy()
     if not df_today.empty:
+        # [修正 A] 強制清除 Category 欄位的空白鍵 (非常重要!)
+        if 'Category' in df_today.columns:
+            df_today['Category'] = df_today['Category'].astype(str).str.strip()
+        
         df_today['Cal_Sub'] = pd.to_numeric(df_today['Cal_Sub'], errors='coerce').fillna(0)
         df_today['Net_Quantity'] = pd.to_numeric(df_today['Net_Quantity'], errors='coerce').fillna(0)
         
-        # [V6.2 修正] 排除水與飲用水
+        # [修正 B] 統一的排除清單 (含 '飲用水')
         exclude_list = ['藥品', '保養品', '水', '飲用水']
-        mask_day_weight = ~df_today['Category'].isin(exclude_list)
         
+        # 計算本日總重 (排除水與藥品)
+        mask_day_weight = ~df_today['Category'].isin(exclude_list)
         day_weight = df_today[mask_day_weight]['Net_Quantity'].sum()
+        
         day_cal = df_today['Cal_Sub'].sum()
 
         if 'Category' in df_today.columns:
@@ -242,15 +246,7 @@ with st.expander("🥣 餐別與碗重設定 (點擊收合)", expanded=st.sessio
     with c_meal:
         def meal_formatter(m):
             return f"{m} (已記)" if m in recorded_meals else m
-        
-        meal_name = st.selectbox(
-            "🍽️ 餐別", 
-            meal_options, 
-            index=default_meal_index, 
-            format_func=meal_formatter,
-            key="meal_selector",
-            on_change=reset_meal_inputs
-        )
+        meal_name = st.selectbox("🍽️ 餐別", meal_options, format_func=meal_formatter, key="meal_selector", on_change=reset_meal_inputs)
     
     last_bowl = 30.0
     df_meal = pd.DataFrame()
@@ -280,15 +276,24 @@ with st.expander("🥣 餐別與碗重設定 (點擊收合)", expanded=st.sessio
             view_df.columns = ['品名', '數量/重量', '熱量']
             st.dataframe(view_df, use_container_width=True, hide_index=True)
 
-# --- 回填 Dashboard ---
+# --- 回填 Dashboard (V6.5 修正計算) ---
 meal_cal_sum = 0.0
 meal_weight_sum = 0.0
 
 if not df_meal.empty:
     df_meal['Cal_Sub'] = pd.to_numeric(df_meal['Cal_Sub'], errors='coerce').fillna(0)
     df_meal['Net_Quantity'] = pd.to_numeric(df_meal['Net_Quantity'], errors='coerce').fillna(0)
-    mask_meal_weight = ~df_meal['Category'].isin(['藥品', '保養品'])
-    meal_weight_sum = df_meal[mask_meal_weight]['Net_Quantity'].sum()
+    
+    # [修正 C] 本餐總重：同步使用排除清單 (原本有含水，現在統一排除)
+    # 如果您希望本餐包含水，請把下方 exclude_list 裡的 '水', '飲用水' 拿掉
+    # 這裡依照您的需求「修正數據」，預設為【排除水】
+    exclude_list_meal = ['藥品', '保養品', '水', '飲用水']
+    
+    if 'Category' in df_meal.columns:
+        df_meal['Category'] = df_meal['Category'].astype(str).str.strip() # 去空白
+        mask_meal_weight = ~df_meal['Category'].isin(exclude_list_meal)
+        meal_weight_sum = df_meal[mask_meal_weight]['Net_Quantity'].sum()
+    
     meal_cal_sum = df_meal['Cal_Sub'].sum()
 
 dash_container.info(
@@ -464,11 +469,9 @@ elif nav_mode == "🏁 完食/紀錄剩餘":
     st.info(f"🍽️ 目前編輯：**{meal_name}**")
     st.caption("紀錄完食時間，若有剩餘，請將剩食倒入新容器(或原碗)秤重")
     
-    # [修正] 完食日期優先
     finish_date = st.date_input("完食日期", value=record_date, key="finish_date_picker")
     str_finish_date = finish_date.strftime("%Y/%m/%d")
     
-    # [修正] 單一完食時間
     default_now = get_tw_time().strftime("%H%M")
     raw_finish_time = st.text_input("完食時間 (如 1806)", value=default_now, key="finish_time_input")
     fmt_finish_time = format_time_str(raw_finish_time)
@@ -515,7 +518,6 @@ elif nav_mode == "🏁 完食/紀錄剩餘":
         if finish_type == "有剩餘 (需秤重)" and waste_net <= 0:
             st.error("剩餘重量計算錯誤，請檢查輸入數值。")
         else:
-            # [修正] 寫入時間字串
             str_time_finish = f"{fmt_finish_time}:00"
             timestamp = f"{str_finish_date} {str_time_finish}"
             
@@ -529,7 +531,7 @@ elif nav_mode == "🏁 完食/紀錄剩餘":
                 item_id_code, category_code, 0, bowl_weight, 
                 final_waste_net, final_waste_cal, 
                 0, 0, 0, "",
-                "完食紀錄", fmt_finish_time # [修正] 寫入簡潔的時間 (HH:MM)
+                "完食紀錄", fmt_finish_time
             ]
             try:
                 sheet_log.append_row(row)
