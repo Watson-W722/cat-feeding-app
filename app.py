@@ -1,5 +1,4 @@
-# 🚀 Python 程式碼 V7.1 (寫入修復與資料安全版)
-
+# 🚀 Python 程式碼 V7.2 (單位擴充 + 動態總計版)
 import streamlit as st
 import streamlit.components.v1 as components
 import pandas as pd
@@ -11,8 +10,7 @@ import uuid
 # --- 1. 設定頁面 ---
 st.set_page_config(page_title="大文餵食紀錄", page_icon="🐱", layout="wide")
 
-# --- [新增] 狀態修復邏輯 (必須放在最前面) ---
-# 這裡處理「上一輪」留下的餐別更新請求，避免 "widget instantiated" 錯誤
+# --- [V7.1] 狀態修復邏輯 ---
 if 'pending_meal' in st.session_state:
     st.session_state.meal_selector = st.session_state.pending_meal
     del st.session_state.pending_meal
@@ -140,6 +138,7 @@ def add_to_cart_callback(bowl_w, last_ref_w, last_ref_n):
     net_weight = 0.0
     db_scale_reading = scale_reading
     
+    # [V7.2 修正] 加入 "次"
     if unit in ["顆", "粒", "錠", "膠囊", "次"]:
         net_weight = scale_reading
         db_scale_reading = last_ref_w 
@@ -158,6 +157,7 @@ def add_to_cart_callback(bowl_w, last_ref_w, last_ref_n):
     fat_val = safe_float(fat_map.get(item_name, 0))
     phos_val = safe_float(phos_map.get(item_name, 0))
 
+    # [V7.2 修正] 加入 "次"
     if unit in ["顆", "粒", "錠", "膠囊", "次"]:
         cal = net_weight * cal_val
         prot = net_weight * prot_val
@@ -202,6 +202,7 @@ if 'dash_open' not in st.session_state: st.session_state.dash_open = False
 if 'meal_open' not in st.session_state: st.session_state.meal_open = False
 if 'just_saved' not in st.session_state: st.session_state.just_saved = False
 if 'finish_radio' not in st.session_state: st.session_state.finish_radio = "全部吃光 (盤光光)"
+if 'nav_mode' not in st.session_state: st.session_state.nav_mode = "➕ 新增食物/藥品"
 
 # 自動捲動邏輯
 if st.session_state.just_saved:
@@ -231,13 +232,10 @@ with st.sidebar:
         load_data.clear()
         st.rerun()
 
-# ----------------------------------------------------
-# 1. Dashboard 數據計算 (V7.0 智能拆分)
-# ----------------------------------------------------
+# --- Dashboard ---
 df_today = pd.DataFrame()
 day_cal = 0.0
-day_food_net = 0.0
-day_water_net = 0.0
+day_weight = 0.0
 supp_str = "無"
 med_str = "無"
 
@@ -247,7 +245,11 @@ if not df_log.empty:
         df_today['Cal_Sub'] = pd.to_numeric(df_today['Cal_Sub'], errors='coerce').fillna(0)
         df_today['Net_Quantity'] = pd.to_numeric(df_today['Net_Quantity'], errors='coerce').fillna(0)
         
-        day_food_net, day_water_net = calculate_intake_breakdown(df_today)
+        # 排除水與飲用水
+        exclude_list = ['藥品', '保養品', '水', '飲用水']
+        mask_day_weight = ~df_today['Category'].isin(exclude_list)
+        
+        day_weight = df_today[mask_day_weight]['Net_Quantity'].sum()
         day_cal = df_today['Cal_Sub'].sum()
 
         if 'Category' in df_today.columns:
@@ -266,9 +268,7 @@ if not df_log.empty:
 with st.expander("📊 今日數據統計 (點擊收合)", expanded=st.session_state.dash_open):
     dash_container = st.container()
 
-# ----------------------------------------------------
-# 2. 餐別設定
-# ----------------------------------------------------
+# --- 餐別設定 ---
 recorded_meals = []
 if not df_today.empty:
     recorded_meals = df_today['Meal_Name'].unique().tolist()
@@ -282,7 +282,6 @@ for m in meal_options:
         default_meal_name = m
         break
 
-# 初始化預設餐別 (只做一次)
 if 'meal_selector' not in st.session_state:
     st.session_state.meal_selector = default_meal_name
 
@@ -292,7 +291,6 @@ with st.expander("🥣 餐別與碗重設定 (點擊收合)", expanded=st.sessio
         def meal_formatter(m):
             return f"{m} (已記)" if m in recorded_meals else m
         
-        # [修正] 移除 index，使用 key="meal_selector" 直接控制
         meal_name = st.selectbox(
             "🍽️ 餐別", 
             meal_options, 
@@ -329,7 +327,7 @@ with st.expander("🥣 餐別與碗重設定 (點擊收合)", expanded=st.sessio
             view_df.columns = ['品名', '數量/重量', '熱量']
             st.dataframe(view_df, use_container_width=True, hide_index=True)
 
-# --- 回填 Dashboard ---
+# --- Dashboard 回填 ---
 meal_cal_sum = 0.0
 meal_food_net = 0.0
 meal_water_net = 0.0
@@ -342,7 +340,7 @@ if not df_meal.empty:
     meal_cal_sum = df_meal['Cal_Sub'].sum()
 
 dash_container.info(
-    f"🔥 **本日**: {day_cal:.0f} kcal / {day_food_net:.1f} g / {day_water_net:.1f} g(水)\n\n"
+    f"🔥 **本日**: {day_cal:.0f} kcal / {day_weight:.1f} g\n\n"
     f"🍽️ **本餐**: {meal_cal_sum:.0f} kcal / {meal_food_net:.1f} g / {meal_water_net:.1f} g(水)\n\n"
     f"🌿 **保養**: {supp_str}\n\n"
     f"💊 **藥品**: {med_str}"
@@ -352,7 +350,6 @@ dash_container.info(
 #      主畫面區塊 3：操作區
 # ==========================================
 
-# 購物車資料安全區 (Session State)
 if 'cart' not in st.session_state:
     st.session_state.cart = []
 
@@ -406,6 +403,7 @@ if nav_mode == "➕ 新增食物/藥品":
         with c3:
             if 'scale_val' not in st.session_state: st.session_state.scale_val = None
             
+            # [V7.2 修正] 加入 "次"
             if unit in ["顆", "粒", "錠", "膠囊", "次"]:
                 scale_reading_ui = st.number_input(f"3. 數量 ({unit})", step=1.0, key="scale_val", value=None, placeholder="輸入數量")
                 is_zeroed_ui = True 
@@ -421,6 +419,7 @@ if nav_mode == "➕ 新增食物/藥品":
             scale_val = safe_float(scale_reading_ui)
             
             if scale_val > 0:
+                # [V7.2 修正] 加入 "次"
                 if unit in ["顆", "粒", "錠", "膠囊", "次"]:
                     net_weight_disp = scale_val
                     calc_msg_disp = f"單位: {unit}"
@@ -458,18 +457,9 @@ if nav_mode == "➕ 新增食物/藥品":
         st.write("##### 🛒 待存清單 (可編輯)")
         df_cart = pd.DataFrame(st.session_state.cart)
         
-        sum_net = df_cart[~df_cart['Category'].isin(['藥品', '保養品'])]['Net_Quantity'].sum()
-        sum_cal = df_cart['Cal_Sub'].sum()
-        total_row = pd.DataFrame([{
-            "Item_Name": "∑ 總計 (不含藥)", 
-            "Net_Quantity": sum_net, 
-            "Cal_Sub": sum_cal,
-            "Category": "Total_Row"
-        }])
-        display_df = pd.concat([df_cart, total_row], ignore_index=True)
-        
+        # [V7.2 修正] 改為動態計算顯示總計，不寫死在資料框
         edited_df = st.data_editor(
-            display_df,
+            df_cart,
             use_container_width=True,
             column_config={
                 "Item_Name": "品名",
@@ -477,9 +467,25 @@ if nav_mode == "➕ 新增食物/藥品":
                 "Cal_Sub": st.column_config.NumberColumn("熱量", format="%.1f")
             },
             column_order=["Item_Name", "Net_Quantity", "Cal_Sub"],
-            num_rows="dynamic",
+            num_rows="dynamic", # 允許刪除
             key="cart_editor"
         )
+        
+        # [V7.2 新增] 即時顯示總計 (排除藥品/保養品)
+        if not edited_df.empty:
+            # 這裡必須處理可能為 None 或無法計算的情況
+            try:
+                edited_df['Net_Quantity'] = pd.to_numeric(edited_df['Net_Quantity'], errors='coerce').fillna(0)
+                edited_df['Cal_Sub'] = pd.to_numeric(edited_df['Cal_Sub'], errors='coerce').fillna(0)
+                
+                mask_total = ~edited_df['Category'].isin(['藥品', '保養品'])
+                live_sum_net = edited_df[mask_total]['Net_Quantity'].sum()
+                live_sum_cal = edited_df['Cal_Sub'].sum()
+                
+                # 顯示在表格下方的總計列
+                st.info(f"∑ 總計 (不含藥)：{live_sum_net:.1f} g  |  🔥 {live_sum_cal:.1f} kcal")
+            except:
+                st.caption("計算中...")
         
         if st.button("💾 儲存寫入 Google Sheet", type="primary", use_container_width=True):
             with st.spinner("寫入中..."):
@@ -488,16 +494,18 @@ if nav_mode == "➕ 新增食物/藥品":
                 str_time = f"{record_time_str}:00"
                 timestamp = f"{str_date} {str_time}"
 
+                # [V7.2 修正] 使用編輯後的 edited_df 進行寫入
                 for i, row_data in edited_df.iterrows():
-                    if row_data.get('Category') == "Total_Row" or row_data.get('Item_Name') == "∑ 總計 (不含藥)":
-                        continue
-
+                    # 嘗試找回原始資料以補齊隱藏欄位
+                    # 使用 Item_Name 匹配 (若有重複品名可能會有小誤差，但機率低)
                     orig_item = next((x for x in st.session_state.cart if x['Item_Name'] == row_data['Item_Name']), {})
+                    
                     row = [
                         str(uuid.uuid4()), timestamp, str_date, str_time, meal_name,
                         orig_item.get('ItemID', ''), orig_item.get('Category', ''), 
                         orig_item.get('Scale_Reading', 0), orig_item.get('Bowl_Weight', 0), 
-                        row_data['Net_Quantity'], row_data['Cal_Sub'],
+                        row_data['Net_Quantity'], # 使用編輯後的值
+                        row_data['Cal_Sub'],      # 使用編輯後的值
                         orig_item.get('Prot_Sub', 0), orig_item.get('Fat_Sub', 0), 
                         orig_item.get('Phos_Sub', 0), "", row_data['Item_Name'], ""
                     ]
@@ -505,12 +513,10 @@ if nav_mode == "➕ 新增食物/藥品":
                 
                 try:
                     sheet_log.append_rows(rows)
-                    st.toast("✅ 寫入成功！")
+                    st.toast("✅ 完食紀錄已儲存")
                     st.session_state.cart = []
-                    load_data.clear()
                     
-                    # [修正] 寫入成功後，設定下次預設餐別 flag (pending_meal)
-                    # 並觸發自動捲動
+                    # [V7.1] 透過 Flag 延遲更新餐別，避免 instantiated 錯誤
                     next_index = 0
                     if meal_name in meal_options:
                         curr_idx = meal_options.index(meal_name)
@@ -520,6 +526,7 @@ if nav_mode == "➕ 新增食物/藥品":
                             next_index = curr_idx
                     st.session_state.pending_meal = meal_options[next_index]
                     
+                    load_data.clear()
                     st.session_state.just_saved = True
                     st.rerun()
                 except Exception as e:
@@ -567,9 +574,7 @@ elif nav_mode == "🏁 完食/紀錄剩餘":
             if waste_net > 0:
                 st.warning(f"📉 實際剩餘淨重：{waste_net:.1f} g")
                 if not df_meal.empty:
-                    # 完食計算也使用 V7.0 邏輯
                     meal_foods = df_meal[df_meal['Net_Quantity'].apply(lambda x: safe_float(x)) > 0]
-                    # 排除藥品保養品計算濃度，但水要算在分母
                     exclude_meds = ['藥品', '保養品']
                     if 'Category' in meal_foods.columns:
                         meal_foods['Category'] = meal_foods['Category'].astype(str).str.strip()
