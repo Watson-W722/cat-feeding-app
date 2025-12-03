@@ -1,4 +1,4 @@
-# Python 程式碼 V6.5 (強力除錯與統計修正版)
+# 🚀 Python 程式碼 V6.6 (自動跳餐 + 切換重置版)
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -30,7 +30,7 @@ def format_time_str(t_str):
         return f"{t_str[:2]}:{t_str[2:]}"
     return t_str if ":" in str(t_str) else get_tw_time().strftime("%H:%M")
 
-# --- 連線設定 ---
+# --- 連線設定 (雲端版) ---
 @st.cache_resource
 def init_connection():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -75,9 +75,12 @@ else:
 #      邏輯函數區 (Callback)
 # ==========================================
 
+# [需求 2] 切換餐別時的重置函式
 def reset_meal_inputs():
+    # 清空新增區
     st.session_state.scale_val = 0.0
     st.session_state.check_zero = False
+    # 清空完食區
     st.session_state.waste_gross = 0.0
     st.session_state.waste_tare = 0.0
     st.session_state.finish_radio = "全部吃光 (盤光光)"
@@ -92,7 +95,6 @@ def add_to_cart_callback(bowl_w, last_ref_w, last_ref_n):
         return
 
     unit = unit_map.get(item_name, "g")
-    
     net_weight = 0.0
     db_scale_reading = scale_reading
     
@@ -109,7 +111,6 @@ def add_to_cart_callback(bowl_w, last_ref_w, last_ref_n):
 
     item_id = item_map.get(item_name, "")
     cat_real = cat_map.get(item_name, "")
-    
     cal_val = safe_float(cal_map.get(item_name, 0))
     prot_val = safe_float(prot_map.get(item_name, 0))
     fat_val = safe_float(fat_map.get(item_name, 0))
@@ -154,11 +155,13 @@ def clear_finish_inputs():
 # ==========================================
 st.title("🐱 大文餵食紀錄")
 
+# 初始化狀態
 if 'dash_open' not in st.session_state: st.session_state.dash_open = False
 if 'meal_open' not in st.session_state: st.session_state.meal_open = False
 if 'just_saved' not in st.session_state: st.session_state.just_saved = False
 if 'finish_radio' not in st.session_state: st.session_state.finish_radio = "全部吃光 (盤光光)"
 
+# 自動捲動邏輯
 if st.session_state.just_saved:
     js = """
     <script>
@@ -186,7 +189,9 @@ with st.sidebar:
         load_data.clear()
         st.rerun()
 
-# --- Dashboard 數據計算 (V6.5 強力修正) ---
+# ----------------------------------------------------
+# 1. 計算數據
+# ----------------------------------------------------
 df_today = pd.DataFrame()
 day_cal = 0.0
 day_weight = 0.0
@@ -196,20 +201,16 @@ med_str = "無"
 if not df_log.empty:
     df_today = df_log[df_log['Date'] == str_date_filter].copy()
     if not df_today.empty:
-        # [修正 A] 強制清除 Category 欄位的空白鍵 (非常重要!)
         if 'Category' in df_today.columns:
             df_today['Category'] = df_today['Category'].astype(str).str.strip()
         
         df_today['Cal_Sub'] = pd.to_numeric(df_today['Cal_Sub'], errors='coerce').fillna(0)
         df_today['Net_Quantity'] = pd.to_numeric(df_today['Net_Quantity'], errors='coerce').fillna(0)
         
-        # [修正 B] 統一的排除清單 (含 '飲用水')
+        # 排除水與飲用水
         exclude_list = ['藥品', '保養品', '水', '飲用水']
-        
-        # 計算本日總重 (排除水與藥品)
         mask_day_weight = ~df_today['Category'].isin(exclude_list)
         day_weight = df_today[mask_day_weight]['Net_Quantity'].sum()
-        
         day_cal = df_today['Cal_Sub'].sum()
 
         if 'Category' in df_today.columns:
@@ -228,25 +229,43 @@ if not df_log.empty:
 with st.expander("📊 今日數據統計 (點擊收合)", expanded=st.session_state.dash_open):
     dash_container = st.container()
 
-# --- 餐別設定 ---
+# ----------------------------------------------------
+# 2. 餐別設定 (含 [需求 1] 自動跳餐邏輯)
+# ----------------------------------------------------
+meal_options = ["第一餐", "第二餐", "第三餐", "第四餐", "第五餐", "點心"]
 recorded_meals = []
 if not df_today.empty:
     recorded_meals = df_today['Meal_Name'].unique().tolist()
 
-meal_options = ["第一餐", "第二餐", "第三餐", "第四餐", "第五餐", "第六餐", "第七餐", "第八餐", "第九餐", "第十餐"]
-
-default_meal_index = 0
-for i, m in enumerate(meal_options):
+# 計算「未紀錄的第一筆」
+next_meal_to_do = meal_options[0]
+for m in meal_options:
     if m not in recorded_meals:
-        default_meal_index = i
+        next_meal_to_do = m
         break
+
+# 強制設定 Session State (如果尚未初始化，或剛存檔完)
+# 邏輯：只有在初始化時，或者剛自動捲動(代表剛存檔)時，才自動切換
+# 平常手動切換時不應該強制跳轉
+if 'meal_selector' not in st.session_state:
+    st.session_state.meal_selector = next_meal_to_do
+# 如果目前選的已經記過了，且不是手動切換的瞬間，嘗試推進 (這裡為了簡單，依賴剛存檔後的重新整理)
 
 with st.expander("🥣 餐別與碗重設定 (點擊收合)", expanded=st.session_state.meal_open):
     c_meal, c_bowl = st.columns(2)
     with c_meal:
         def meal_formatter(m):
             return f"{m} (已記)" if m in recorded_meals else m
-        meal_name = st.selectbox("🍽️ 餐別", meal_options, format_func=meal_formatter, key="meal_selector", on_change=reset_meal_inputs)
+        
+        # [修正] 這裡我們不使用 index，而是直接綁定 key 並初始化
+        # 這樣 Streamlit 會自動管理狀態
+        meal_name = st.selectbox(
+            "🍽️ 餐別", 
+            meal_options, 
+            format_func=meal_formatter,
+            key="meal_selector",
+            on_change=reset_meal_inputs # [需求 2] 切換時清空
+        )
     
     last_bowl = 30.0
     df_meal = pd.DataFrame()
@@ -276,7 +295,7 @@ with st.expander("🥣 餐別與碗重設定 (點擊收合)", expanded=st.sessio
             view_df.columns = ['品名', '數量/重量', '熱量']
             st.dataframe(view_df, use_container_width=True, hide_index=True)
 
-# --- 回填 Dashboard (V6.5 修正計算) ---
+# --- 回填 Dashboard ---
 meal_cal_sum = 0.0
 meal_weight_sum = 0.0
 
@@ -284,13 +303,9 @@ if not df_meal.empty:
     df_meal['Cal_Sub'] = pd.to_numeric(df_meal['Cal_Sub'], errors='coerce').fillna(0)
     df_meal['Net_Quantity'] = pd.to_numeric(df_meal['Net_Quantity'], errors='coerce').fillna(0)
     
-    # [修正 C] 本餐總重：同步使用排除清單 (原本有含水，現在統一排除)
-    # 如果您希望本餐包含水，請把下方 exclude_list 裡的 '水', '飲用水' 拿掉
-    # 這裡依照您的需求「修正數據」，預設為【排除水】
     exclude_list_meal = ['藥品', '保養品', '水', '飲用水']
-    
     if 'Category' in df_meal.columns:
-        df_meal['Category'] = df_meal['Category'].astype(str).str.strip() # 去空白
+        df_meal['Category'] = df_meal['Category'].astype(str).str.strip()
         mask_meal_weight = ~df_meal['Category'].isin(exclude_list_meal)
         meal_weight_sum = df_meal[mask_meal_weight]['Net_Quantity'].sum()
     
@@ -459,6 +474,18 @@ if nav_mode == "➕ 新增食物/藥品":
                     st.toast("✅ 寫入成功！")
                     st.session_state.cart = []
                     load_data.clear()
+                    
+                    # [重點] 存檔後，將選單推向下一餐
+                    next_index = 0
+                    if meal_name in meal_options:
+                        curr_idx = meal_options.index(meal_name)
+                        if curr_idx < len(meal_options) - 1:
+                            next_index = curr_idx + 1
+                        else:
+                            next_index = curr_idx # 最後一餐就停著
+                    st.session_state.meal_selector = meal_options[next_index]
+                    
+                    clear_finish_inputs()
                     st.session_state.just_saved = True
                     st.rerun()
                 except Exception as e:
