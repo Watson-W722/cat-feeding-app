@@ -1,4 +1,5 @@
-# 🚀 Python 程式碼 V7.2 (單位擴充 + 動態總計版)
+#  Python 程式碼 V7.3 (Callback 架構重構版)
+
 import streamlit as st
 import streamlit.components.v1 as components
 import pandas as pd
@@ -138,7 +139,6 @@ def add_to_cart_callback(bowl_w, last_ref_w, last_ref_n):
     net_weight = 0.0
     db_scale_reading = scale_reading
     
-    # [V7.2 修正] 加入 "次"
     if unit in ["顆", "粒", "錠", "膠囊", "次"]:
         net_weight = scale_reading
         db_scale_reading = last_ref_w 
@@ -157,7 +157,6 @@ def add_to_cart_callback(bowl_w, last_ref_w, last_ref_n):
     fat_val = safe_float(fat_map.get(item_name, 0))
     phos_val = safe_float(phos_map.get(item_name, 0))
 
-    # [V7.2 修正] 加入 "次"
     if unit in ["顆", "粒", "錠", "膠囊", "次"]:
         cal = net_weight * cal_val
         prot = net_weight * prot_val
@@ -188,9 +187,44 @@ def add_to_cart_callback(bowl_w, last_ref_w, last_ref_n):
     st.session_state.meal_open = False
     st.session_state.just_saved = True
 
-def clear_finish_inputs_callback():
-    st.session_state.waste_gross = None
-    st.session_state.waste_tare = None
+# [V7.3 新增] 完食寫入 Callback (解決 instantiated 錯誤)
+def save_finish_callback(finish_type, waste_net, waste_cal, bowl_w, meal_n, finish_time_str, record_date_obj):
+    if finish_type == "有剩餘 (需秤重)" and waste_net <= 0:
+        st.session_state.finish_error = "剩餘重量計算錯誤，請檢查輸入數值。"
+        return
+
+    # 準備寫入資料
+    str_date = record_date_obj.strftime("%Y/%m/%d")
+    # [修正] 時間戳記包含當下秒數，避免重複
+    str_time_finish = f"{finish_time_str}:00"
+    timestamp = f"{str_date} {str_time_finish}"
+    
+    final_waste_net = -waste_net if finish_type == "有剩餘 (需秤重)" else 0
+    final_waste_cal = -waste_cal if finish_type == "有剩餘 (需秤重)" else 0
+    item_id_code = "WASTE" if finish_type == "有剩餘 (需秤重)" else "FINISH"
+    category_code = "剩食" if finish_type == "有剩餘 (需秤重)" else "完食"
+
+    row = [
+        str(uuid.uuid4()), timestamp, str_date, str_time_finish, meal_n,
+        item_id_code, category_code, 0, bowl_w, 
+        final_waste_net, final_waste_cal, 
+        0, 0, 0, "",
+        "完食紀錄", finish_time_str
+    ]
+    
+    try:
+        sheet_log.append_row(row)
+        st.toast("✅ 完食紀錄已儲存")
+        load_data.clear()
+        
+        # 清空輸入 (因為是 callback，現在可以安全修改 session state)
+        st.session_state.waste_gross = None
+        st.session_state.waste_tare = None
+        st.session_state.finish_error = None # 清除錯誤訊息
+        
+        st.session_state.just_saved = True
+    except Exception as e:
+        st.session_state.finish_error = f"寫入失敗：{e}"
 
 # ==========================================
 #      UI 佈局開始
@@ -203,6 +237,7 @@ if 'meal_open' not in st.session_state: st.session_state.meal_open = False
 if 'just_saved' not in st.session_state: st.session_state.just_saved = False
 if 'finish_radio' not in st.session_state: st.session_state.finish_radio = "全部吃光 (盤光光)"
 if 'nav_mode' not in st.session_state: st.session_state.nav_mode = "➕ 新增食物/藥品"
+if 'finish_error' not in st.session_state: st.session_state.finish_error = None
 
 # 自動捲動邏輯
 if st.session_state.just_saved:
@@ -235,7 +270,8 @@ with st.sidebar:
 # --- Dashboard ---
 df_today = pd.DataFrame()
 day_cal = 0.0
-day_weight = 0.0
+day_food_net = 0.0
+day_water_net = 0.0
 supp_str = "無"
 med_str = "無"
 
@@ -245,11 +281,8 @@ if not df_log.empty:
         df_today['Cal_Sub'] = pd.to_numeric(df_today['Cal_Sub'], errors='coerce').fillna(0)
         df_today['Net_Quantity'] = pd.to_numeric(df_today['Net_Quantity'], errors='coerce').fillna(0)
         
-        # 排除水與飲用水
-        exclude_list = ['藥品', '保養品', '水', '飲用水']
-        mask_day_weight = ~df_today['Category'].isin(exclude_list)
-        
-        day_weight = df_today[mask_day_weight]['Net_Quantity'].sum()
+        # [V7.0] 使用智能拆分計算本日
+        day_food_net, day_water_net = calculate_intake_breakdown(df_today)
         day_cal = df_today['Cal_Sub'].sum()
 
         if 'Category' in df_today.columns:
@@ -340,7 +373,7 @@ if not df_meal.empty:
     meal_cal_sum = df_meal['Cal_Sub'].sum()
 
 dash_container.info(
-    f"🔥 **本日**: {day_cal:.0f} kcal / {day_weight:.1f} g\n\n"
+    f"🔥 **本日**: {day_cal:.0f} kcal / {day_food_net:.1f} g / {day_water_net:.1f} g(水)\n\n"
     f"🍽️ **本餐**: {meal_cal_sum:.0f} kcal / {meal_food_net:.1f} g / {meal_water_net:.1f} g(水)\n\n"
     f"🌿 **保養**: {supp_str}\n\n"
     f"💊 **藥品**: {med_str}"
@@ -403,7 +436,6 @@ if nav_mode == "➕ 新增食物/藥品":
         with c3:
             if 'scale_val' not in st.session_state: st.session_state.scale_val = None
             
-            # [V7.2 修正] 加入 "次"
             if unit in ["顆", "粒", "錠", "膠囊", "次"]:
                 scale_reading_ui = st.number_input(f"3. 數量 ({unit})", step=1.0, key="scale_val", value=None, placeholder="輸入數量")
                 is_zeroed_ui = True 
@@ -419,7 +451,6 @@ if nav_mode == "➕ 新增食物/藥品":
             scale_val = safe_float(scale_reading_ui)
             
             if scale_val > 0:
-                # [V7.2 修正] 加入 "次"
                 if unit in ["顆", "粒", "錠", "膠囊", "次"]:
                     net_weight_disp = scale_val
                     calc_msg_disp = f"單位: {unit}"
@@ -457,7 +488,7 @@ if nav_mode == "➕ 新增食物/藥品":
         st.write("##### 🛒 待存清單 (可編輯)")
         df_cart = pd.DataFrame(st.session_state.cart)
         
-        # [V7.2 修正] 改為動態計算顯示總計，不寫死在資料框
+        # [V7.2] 動態總計
         edited_df = st.data_editor(
             df_cart,
             use_container_width=True,
@@ -467,13 +498,12 @@ if nav_mode == "➕ 新增食物/藥品":
                 "Cal_Sub": st.column_config.NumberColumn("熱量", format="%.1f")
             },
             column_order=["Item_Name", "Net_Quantity", "Cal_Sub"],
-            num_rows="dynamic", # 允許刪除
+            num_rows="dynamic",
             key="cart_editor"
         )
         
-        # [V7.2 新增] 即時顯示總計 (排除藥品/保養品)
+        # 即時顯示總計
         if not edited_df.empty:
-            # 這裡必須處理可能為 None 或無法計算的情況
             try:
                 edited_df['Net_Quantity'] = pd.to_numeric(edited_df['Net_Quantity'], errors='coerce').fillna(0)
                 edited_df['Cal_Sub'] = pd.to_numeric(edited_df['Cal_Sub'], errors='coerce').fillna(0)
@@ -482,11 +512,10 @@ if nav_mode == "➕ 新增食物/藥品":
                 live_sum_net = edited_df[mask_total]['Net_Quantity'].sum()
                 live_sum_cal = edited_df['Cal_Sub'].sum()
                 
-                # 顯示在表格下方的總計列
                 st.info(f"∑ 總計 (不含藥)：{live_sum_net:.1f} g  |  🔥 {live_sum_cal:.1f} kcal")
             except:
                 st.caption("計算中...")
-        
+
         if st.button("💾 儲存寫入 Google Sheet", type="primary", use_container_width=True):
             with st.spinner("寫入中..."):
                 rows = []
@@ -494,18 +523,13 @@ if nav_mode == "➕ 新增食物/藥品":
                 str_time = f"{record_time_str}:00"
                 timestamp = f"{str_date} {str_time}"
 
-                # [V7.2 修正] 使用編輯後的 edited_df 進行寫入
                 for i, row_data in edited_df.iterrows():
-                    # 嘗試找回原始資料以補齊隱藏欄位
-                    # 使用 Item_Name 匹配 (若有重複品名可能會有小誤差，但機率低)
                     orig_item = next((x for x in st.session_state.cart if x['Item_Name'] == row_data['Item_Name']), {})
-                    
                     row = [
                         str(uuid.uuid4()), timestamp, str_date, str_time, meal_name,
                         orig_item.get('ItemID', ''), orig_item.get('Category', ''), 
                         orig_item.get('Scale_Reading', 0), orig_item.get('Bowl_Weight', 0), 
-                        row_data['Net_Quantity'], # 使用編輯後的值
-                        row_data['Cal_Sub'],      # 使用編輯後的值
+                        row_data['Net_Quantity'], row_data['Cal_Sub'],
                         orig_item.get('Prot_Sub', 0), orig_item.get('Fat_Sub', 0), 
                         orig_item.get('Phos_Sub', 0), "", row_data['Item_Name'], ""
                     ]
@@ -513,10 +537,10 @@ if nav_mode == "➕ 新增食物/藥品":
                 
                 try:
                     sheet_log.append_rows(rows)
-                    st.toast("✅ 完食紀錄已儲存")
+                    st.toast("✅ 寫入成功！")
                     st.session_state.cart = []
                     
-                    # [V7.1] 透過 Flag 延遲更新餐別，避免 instantiated 錯誤
+                    # 跳到下一餐
                     next_index = 0
                     if meal_name in meal_options:
                         curr_idx = meal_options.index(meal_name)
@@ -556,6 +580,10 @@ elif nav_mode == "🏁 完食/紀錄剩餘":
     waste_net = 0.0
     waste_cal = 0.0
     
+    # 顯示錯誤訊息用
+    if st.session_state.finish_error:
+        st.error(st.session_state.finish_error)
+
     if finish_type == "有剩餘 (需秤重)":
         st.markdown("---")
         st.caption("請輸入「倒掉時」的秤重數據：")
@@ -574,8 +602,9 @@ elif nav_mode == "🏁 完食/紀錄剩餘":
             if waste_net > 0:
                 st.warning(f"📉 實際剩餘淨重：{waste_net:.1f} g")
                 if not df_meal.empty:
+                    # [V7.3 修正] 使用新邏輯計算剩餘熱量 (含水)
                     meal_foods = df_meal[df_meal['Net_Quantity'].apply(lambda x: safe_float(x)) > 0]
-                    exclude_meds = ['藥品', '保養品']
+                    exclude_meds = ['藥品', '保養品'] # 不排除水
                     if 'Category' in meal_foods.columns:
                         meal_foods['Category'] = meal_foods['Category'].astype(str).str.strip()
                         calc_df = meal_foods[~meal_foods['Category'].isin(exclude_meds)]
@@ -590,31 +619,9 @@ elif nav_mode == "🏁 完食/紀錄剩餘":
             elif val_gross > 0 and waste_net <= 0:
                 st.error("空重不能大於總重！")
 
-    if st.button("💾 記錄完食/剩餘", type="primary"):
-        if finish_type == "有剩餘 (需秤重)" and waste_net <= 0:
-            st.error("剩餘重量計算錯誤，請檢查輸入數值。")
-        else:
-            str_time_finish = f"{fmt_finish_time}:00"
-            timestamp = f"{str_finish_date} {str_time_finish}"
-            
-            final_waste_net = -waste_net if finish_type == "有剩餘 (需秤重)" else 0
-            final_waste_cal = -waste_cal if finish_type == "有剩餘 (需秤重)" else 0
-            item_id_code = "WASTE" if finish_type == "有剩餘 (需秤重)" else "FINISH"
-            category_code = "剩食" if finish_type == "有剩餘 (需秤重)" else "完食"
-
-            row = [
-                str(uuid.uuid4()), timestamp, str_finish_date, str_time_finish, meal_name,
-                item_id_code, category_code, 0, bowl_weight, 
-                final_waste_net, final_waste_cal, 
-                0, 0, 0, "",
-                "完食紀錄", fmt_finish_time
-            ]
-            try:
-                sheet_log.append_row(row)
-                st.toast("✅ 完食紀錄已儲存")
-                load_data.clear()
-                clear_finish_inputs_callback()
-                st.session_state.just_saved = True
-                st.rerun()
-            except Exception as e:
-                st.error(f"寫入失敗：{e}")
+    # [V7.3 修正] 使用 Callback 處理寫入
+    st.button("💾 記錄完食/剩餘", 
+              type="primary",
+              on_click=save_finish_callback,
+              args=(finish_type, waste_net, waste_cal, bowl_weight, meal_name, fmt_finish_time, record_date)
+    )
