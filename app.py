@@ -1,4 +1,4 @@
-# Python 程式碼 V7.9 (補回遺失函式修正版)
+# Python 程式碼 V8.0 (React UI 渲染修復版)
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -31,54 +31,31 @@ def format_time_str(t_str):
         return f"{t_str[:2]}:{t_str[2:]}"
     return t_str if ":" in str(t_str) else get_tw_time().strftime("%H:%M")
 
-# [V7.9 修正] 補回遺失的函式：清洗重複完食紀錄
+# [V7.5] 清洗重複完食紀錄工具
 def clean_duplicate_finish_records(df):
-    """
-    傳入一個 DataFrame，針對每一餐，只保留「最後一筆」完食/剩食紀錄。
-    避免資料庫中有重複紀錄導致重複扣除。
-    """
-    if df.empty:
-        return df
-    
-    # 找出完食紀錄 (WASTE 或 FINISH)
+    if df.empty: return df
     mask_finish = df['ItemID'].isin(['WASTE', 'FINISH'])
     df_others = df[~mask_finish]
     df_finish = df[mask_finish]
-    
-    if df_finish.empty:
-        return df
-    
-    # 對完食紀錄進行去重，保留最後一筆 (keep='last')
-    # 假設 Meal_Name 相同就是同一餐
+    if df_finish.empty: return df
     df_finish_clean = df_finish.drop_duplicates(subset=['Meal_Name'], keep='last')
-    
-    # 合併回原本的資料 (非完食 + 清洗後的完食)
-    df_final = pd.concat([df_others, df_finish_clean], ignore_index=True)
-    return df_final
+    return pd.concat([df_others, df_finish_clean], ignore_index=True)
 
-# 智能權重拆分計算函式 (V7.0)
+# [V7.0] 智能權重拆分計算
 def calculate_intake_breakdown(df):
-    if df.empty:
-        return 0.0, 0.0
-    
-    if 'Category' in df.columns:
-        df['Category'] = df['Category'].astype(str).str.strip()
-    
+    if df.empty: return 0.0, 0.0
+    if 'Category' in df.columns: df['Category'] = df['Category'].astype(str).str.strip()
     exclude_list = ['藥品', '保養品']
     df_calc = df[~df['Category'].isin(exclude_list)].copy()
-    
-    if df_calc.empty:
-        return 0.0, 0.0
+    if df_calc.empty: return 0.0, 0.0
 
     df_input = df_calc[df_calc['Net_Quantity'] > 0]
     df_waste = df_calc[df_calc['Net_Quantity'] < 0]
     
     water_cats = ['水', '飲用水']
-    
     input_water = df_input[df_input['Category'].isin(water_cats)]['Net_Quantity'].sum()
     input_food = df_input[~df_input['Category'].isin(water_cats)]['Net_Quantity'].sum()
     total_input = input_water + input_food
-    
     total_waste = df_waste['Net_Quantity'].sum()
     
     if total_input > 0:
@@ -90,7 +67,6 @@ def calculate_intake_breakdown(df):
         
     final_water_net = input_water + (total_waste * ratio_water)
     final_food_net = input_food + (total_waste * ratio_food)
-    
     return final_food_net, final_water_net
 
 # --- [V7.8] UI 生成函數 (HTML/CSS) ---
@@ -107,7 +83,6 @@ def render_dashboard_html(day_stats, meal_stats, supp_list, med_list):
         "activity": '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>'
     }
 
-    # CSS 樣式
     style = """
     <style>
         .dashboard-card { background: white; border-radius: 16px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border: 1px solid #f1f5f9; margin-bottom: 20px; }
@@ -115,71 +90,49 @@ def render_dashboard_html(day_stats, meal_stats, supp_list, med_list):
         .section-icon { padding: 6px; border-radius: 8px; display: flex; align-items: center; justify-content: center; }
         .grid-stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
         @media (max-width: 768px) { .grid-stats { grid-template-columns: repeat(2, 1fr); } }
-        
         .stat-item { background: white; border: 1px solid #f1f5f9; border-radius: 12px; padding: 12px; display: flex; flex-direction: column; justify-content: space-between; }
         .stat-header { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; font-size: 12px; font-weight: 500; color: #64748b; }
         .stat-icon { padding: 4px; border-radius: 6px; display: flex; align-items: center; justify-content: center; }
         .stat-value { font-size: 20px; font-weight: 700; color: #1e293b; line-height: 1.2; }
         .stat-unit { font-size: 12px; font-weight: 500; color: #94a3b8; margin-left: 2px; }
-        
         .tag-container { display: flex; flex-wrap: wrap; gap: 8px; }
         .tag { display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 8px; font-size: 13px; font-weight: 500; border: 1px solid transparent; }
         .tag-count { background: rgba(255,255,255,0.8); padding: 1px 5px; border-radius: 4px; font-size: 10px; font-weight: 700; margin-left: 6px; }
-        
-        /* Colors */
         .bg-orange { background: #fff7ed; color: #f97316; }
         .bg-blue { background: #eff6ff; color: #3b82f6; }
         .bg-cyan { background: #ecfeff; color: #06b6d4; }
         .bg-red { background: #fef2f2; color: #ef4444; }
         .bg-yellow { background: #fefce8; color: #eab308; }
-        
         .tag-green { background: #ecfdf5; color: #047857; border-color: #d1fae5; }
         .tag-red { background: #fff1f2; color: #be123c; border-color: #ffe4e6; }
-        
         .bar-bg { height: 6px; width: 100%; background: #f1f5f9; border-radius: 99px; margin-top: 10px; overflow: hidden; }
         .bar-fill { height: 100%; border-radius: 99px; }
     </style>
     """
 
-    # 產生單個數據格的 HTML
     def get_stat_html(icon, label, value, unit, color_class, bar_color, percent=0):
         bar_html = f'<div class="bar-bg"><div class="bar-fill" style="width: {min(percent, 100)}%; background: {bar_color};"></div></div>' if percent > 0 else '<div style="height:6px; margin-top:10px"></div>'
         return f"""
         <div class="stat-item">
             <div>
-                <div class="stat-header">
-                    <div class="stat-icon {color_class}">{icons[icon]}</div>
-                    {label}
-                </div>
-                <div style="display:flex; align-items:baseline;">
-                    <span class="stat-value">{value}</span>
-                    <span class="stat-unit">{unit}</span>
-                </div>
+                <div class="stat-header"><div class="stat-icon {color_class}">{icons[icon]}</div>{label}</div>
+                <div style="display:flex; align-items:baseline;"><span class="stat-value">{value}</span><span class="stat-unit">{unit}</span></div>
             </div>
             {bar_html}
         </div>
         """
 
-    # 產生標籤 HTML
     def get_tag_html(items, type_class, icon_key):
         if not items: return '<span style="color:#94a3b8; font-size:13px;">無</span>'
         html = ""
         for item in items:
-            html += f"""
-            <span class="tag {type_class}">
-                {icons[icon_key]} {item['name']}
-                <span class="tag-count">x{int(item['count'])}</span>
-            </span>
-            """
+            html += f"""<span class="tag {type_class}">{icons[icon_key]} {item['name']}<span class="tag-count">x{int(item['count'])}</span></span>"""
         return html
 
-    # 組合本日數據
+    # 本日
     daily_html = f"""
     <div class="dashboard-card">
-        <div class="section-title">
-            <div class="section-icon bg-orange">{icons['activity']}</div>
-            本日總計
-        </div>
+        <div class="section-title"><div class="section-icon bg-orange">{icons['activity']}</div>本日總計</div>
         <div class="grid-stats">
             {get_stat_html("flame", "熱量", int(day_stats['cal']), "kcal", "bg-orange", "#f97316", day_stats['cal']/250)}
             {get_stat_html("utensils", "食物", f"{day_stats['food']:.1f}", "g", "bg-blue", "#3b82f6")}
@@ -189,16 +142,12 @@ def render_dashboard_html(day_stats, meal_stats, supp_list, med_list):
         </div>
     </div>
     """
-
-    # 組合本餐數據
+    # 本餐
     meal_html = f"""
     <div class="dashboard-card">
         <div class="section-title">
-            <div class="section-icon bg-blue">{icons['utensils']}</div>
-            本餐小計
-            <span style="margin-left:auto; font-size:12px; background:#eff6ff; color:#3b82f6; padding:2px 8px; border-radius:99px; font-weight:600;">
-                {meal_stats['name']}
-            </span>
+            <div class="section-icon bg-blue">{icons['utensils']}</div>本餐小計
+            <span style="margin-left:auto; font-size:12px; background:#eff6ff; color:#3b82f6; padding:2px 8px; border-radius:99px; font-weight:600;">{meal_stats['name']}</span>
         </div>
         <div class="grid-stats">
             {get_stat_html("flame", "熱量", int(meal_stats['cal']), "kcal", "bg-orange", "#f97316")}
@@ -209,31 +158,16 @@ def render_dashboard_html(day_stats, meal_stats, supp_list, med_list):
         </div>
     </div>
     """
-
-    # 組合藥品與保養品
+    # 藥品
     supp_med_html = f"""
     <div class="dashboard-card">
-        <div class="section-title">
-            <div class="section-icon bg-green" style="background:#ecfdf5; color:#047857;">{icons['pill']}</div>
-            保養與藥品紀錄
-        </div>
+        <div class="section-title"><div class="section-icon bg-green" style="background:#ecfdf5; color:#047857;">{icons['pill']}</div>保養與藥品紀錄</div>
         <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px;">
-            <div>
-                <div style="font-size:11px; font-weight:700; color:#94a3b8; margin-bottom:8px; text-transform:uppercase;">保養品清單</div>
-                <div class="tag-container">
-                    {get_tag_html(supp_list, "tag-green", "leaf")}
-                </div>
-            </div>
-            <div>
-                <div style="font-size:11px; font-weight:700; color:#94a3b8; margin-bottom:8px; text-transform:uppercase;">藥品清單</div>
-                <div class="tag-container">
-                    {get_tag_html(med_list, "tag-red", "pill")}
-                </div>
-            </div>
+            <div><div style="font-size:11px; font-weight:700; color:#94a3b8; margin-bottom:8px; text-transform:uppercase;">保養品清單</div><div class="tag-container">{get_tag_html(supp_list, "tag-green", "leaf")}</div></div>
+            <div><div style="font-size:11px; font-weight:700; color:#94a3b8; margin-bottom:8px; text-transform:uppercase;">藥品清單</div><div class="tag-container">{get_tag_html(med_list, "tag-red", "pill")}</div></div>
         </div>
     </div>
     """
-
     return style + daily_html + meal_html + supp_med_html
 
 # --- 連線設定 ---
@@ -417,7 +351,7 @@ def clear_finish_inputs_callback():
 st.title("🐱 大文餵食紀錄")
 
 # 初始化狀態
-if 'dash_open' not in st.session_state: st.session_state.dash_open = False
+if 'dash_open' not in st.session_state: st.session_state.dash_open = True
 if 'meal_open' not in st.session_state: st.session_state.meal_open = False
 if 'just_saved' not in st.session_state: st.session_state.just_saved = False
 if 'finish_radio' not in st.session_state: st.session_state.finish_radio = "全部吃光 (盤光光)"
@@ -452,7 +386,7 @@ with st.sidebar:
         load_data.clear()
         st.rerun()
 
-# --- 1. 數據準備 ---
+# --- 1. 數據準備 (打包成字典) ---
 df_today = pd.DataFrame()
 day_stats = {'cal':0, 'food':0, 'water':0, 'prot':0, 'fat':0}
 meal_stats = {'name': '尚未選擇', 'cal':0, 'food':0, 'water':0, 'prot':0, 'fat':0}
@@ -478,13 +412,11 @@ if not df_log.empty:
         day_stats['fat'] = df_today['Fat_Sub'].sum()
 
         if 'Category' in df_today.columns:
-            # 準備保養品列表
             df_supp = df_today[df_today['Category'] == '保養品']
             if not df_supp.empty:
                 counts = df_supp.groupby('Item_Name')['Net_Quantity'].sum()
                 supp_list = [{'name': k, 'count': v} for k, v in counts.items()]
             
-            # 準備藥品列表
             df_med = df_today[df_today['Category'] == '藥品']
             if not df_med.empty:
                 counts = df_med.groupby('Item_Name')['Net_Quantity'].sum()
@@ -492,7 +424,6 @@ if not df_log.empty:
 
 # --- 2. Dashboard (React Style) ---
 with st.expander("📊 今日數據統計 (點擊收合)", expanded=st.session_state.dash_open):
-    # 使用新的渲染函式
     dashboard_ph = st.empty()
 
 # --- 3. 餐別設定 ---
@@ -569,7 +500,7 @@ if not df_meal.empty:
     meal_stats['prot'] = df_meal_clean['Prot_Sub'].sum()
     meal_stats['fat'] = df_meal_clean['Fat_Sub'].sum()
 
-# 渲染 HTML Dashboard
+# 渲染 HTML Dashboard (一定要有 unsafe_allow_html=True)
 html_content = render_dashboard_html(day_stats, meal_stats, supp_list, med_list)
 dashboard_ph.markdown(html_content, unsafe_allow_html=True)
 
@@ -741,7 +672,7 @@ if nav_mode == "➕ 新增食物/藥品":
                             next_index = curr_idx + 1
                         else:
                             next_index = curr_idx
-                    st.session_state.pending_meal = meal_options[next_index]
+                    st.session_state.meal_selector = meal_options[next_index]
                     
                     load_data.clear()
                     st.session_state.just_saved = True
@@ -751,7 +682,7 @@ if nav_mode == "➕ 新增食物/藥品":
 
 # --- 模式 2: 完食 ---
 elif nav_mode == "🏁 完食/紀錄剩餘":
-    st.info(f"🍽️ 目前編輯：**{meal_name}**")
+    st.markdown(f"##### 🍽️ 編輯：{meal_name}")
     st.caption("紀錄完食時間，若有剩餘，請將剩食倒入新容器(或原碗)秤重")
     
     finish_date = st.date_input("完食日期", value=record_date, key="finish_date_picker")
@@ -791,7 +722,6 @@ elif nav_mode == "🏁 完食/紀錄剩餘":
             if waste_net > 0:
                 st.warning(f"📉 實際剩餘淨重：{waste_net:.1f} g")
                 if not df_meal.empty:
-                    # [V7.5] 使用清洗後的 df 計算剩餘扣除熱量
                     df_meal_clean = clean_duplicate_finish_records(df_meal)
                     meal_foods = df_meal_clean[df_meal_clean['Net_Quantity'].apply(lambda x: safe_float(x)) > 0]
                     
