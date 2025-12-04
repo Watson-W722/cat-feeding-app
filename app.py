@@ -1,4 +1,4 @@
-# Python 程式碼 V10.3 (React UI 修復與清理版)
+# Python 程式碼 V10.4 (HTML 渲染強制修復版)
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -70,129 +70,113 @@ def calculate_intake_breakdown(df):
     final_food_net = input_food + (total_waste * ratio_food)
     return final_food_net, final_water_net
 
-# --- [V10.2] CSS 注入 (RWD 與配色) ---
+# --- [V10.4 修正] SVG Icons ---
+def get_svg_icons():
+    return {
+        "flame": '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.1.2-2.2.6-3.3a1 1 0 0 0 2.1.7z"></path></svg>',
+        "utensils": '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>',
+        "droplets": '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 16.3c2.2 0 4-1.83 4-4.05 0-1.16-.57-2.26-1.71-3.19S7.29 6.75 7 5.3c-.29 1.45-1.14 2.84-2.29 3.76S3 11.1 3 12.25c0 2.22 1.8 4.05 4 4.05z"/><path d="M12.56 6.6A10.97 10.97 0 0 0 14 3.02c.5 2.5 2 4.9 4 6.5s3 3.5 3 5.5a6.98 6.98 0 0 1-11.91 4.97"/></svg>',
+        "beef": '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12.5" cy="8.5" r="2.5"/><path d="M12.5 2a6.5 6.5 0 0 0-6.22 4.6c-1.1 3.13-.78 6.43 1.48 9.17l2.92 2.92c.65.65 1.74.65 2.39 0l.97-.97a6 6 0 0 1 4.24-1.76h.04a6 6 0 0 0 3.79-1.35l.81-.81a2.5 2.5 0 0 0-3.54-3.54l-.47.47a1.5 1.5 0 0 1-2.12 0l-.88-.88a2.5 2.5 0 0 1 0-3.54l.84-.84c.76-.76.88-2 .2-2.86A6.5 6.5 0 0 0 12.5 2Z"/></svg>',
+        "dna": '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 15c6.638 0 12-5.362 12-12"/><path d="M10 21c6.638 0 12-5.362 12-12"/><path d="m2 3 20 18"/><path d="M12.818 8.182a4.92 4.92 0 0 0-1.636-1.636"/><path d="M16.364 11.728a9.862 9.862 0 0 0-3.092-3.092"/><path d="M9.272 15.364a9.862 9.862 0 0 0-3.092-3.092"/><path d="M12.818 18.91a4.92 4.92 0 0 0-1.636-1.636"/></svg>',
+        "pill": '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7Z"/><path d="m8.5 8.5 7 7"/></svg>',
+        "leaf": '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.77 10-10 10Z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></svg>',
+        "activity": '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>',
+        "cat": '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5c.67 0 1.35.09 2 .26 1.78-2 5.03-2.84 6.42-2.26 1.4.58-.42 7-.42 7 .57 1.07 1 2.24 1 3.44C21 17.9 16.97 21 12 21S3 17.9 3 13.44C3 12.24 3.43 11.07 4 10c0 0-1.82-6.42-.42-7 1.39-.58 4.64.26 6.42 2.26.65-.17 1.33-.26 2-.26z"/><path d="M9 13h.01"/><path d="M15 13h.01"/></svg>',
+        "calendar": '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/></svg>'
+    }
+    return icons
+
+# --- [V10.4 修正] CSS 注入 ---
 def inject_custom_css():
     st.markdown("""
     <style>
-        /* 變數定義 */
         :root { --navy: #1F1641; --blue: #0486DB; --cyan: #05ACD3; --beige: #BBBF95; --bg: #F8FAFC; }
-
-        /* 全局樣式 */
         .stApp { background-color: var(--bg); font-family: 'Segoe UI', sans-serif; color: var(--navy); }
         .block-container { padding-top: 2rem; padding-bottom: 5rem; }
-
-        /* 卡片風格容器 */
         div[data-testid="stVerticalBlock"] > div[style*="background-color"] {
-            background: white; border-radius: 16px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-            border: 1px solid rgba(4, 134, 219, 0.1);
-            padding: 20px;
+            background: white; border-radius: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); border: 1px solid rgba(4, 134, 219, 0.1); padding: 20px;
         }
-
-        /* 自定義 HTML 卡片樣式 */
-        .dashboard-card { 
-            background: white; border-radius: 16px; padding: 20px; 
-            box-shadow: 0 1px 3px rgba(0,0,0,0.05); 
-            border: 1px solid rgba(4, 134, 219, 0.1); margin-bottom: 20px; 
-        }
-        .section-title { 
-            font-size: 16px; font-weight: 700; color: #334155; 
-            display: flex; align-items: center; gap: 8px; margin-bottom: 16px; 
-        }
+        .dashboard-card { background: white; border-radius: 16px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); border: 1px solid rgba(4, 134, 219, 0.1); margin-bottom: 20px; }
+        .section-title { font-size: 16px; font-weight: 700; color: #334155; display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
         .section-icon { padding: 6px; border-radius: 8px; display: flex; align-items: center; justify-content: center; }
-        
-        /* 數據網格 */
-        .stat-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
-        @media (max-width: 992px) { .stat-grid { grid-template-columns: repeat(2, 1fr); } }
-
-        .stat-card {
-            background: white; border: 1px solid #f1f5f9; border-radius: 12px; padding: 12px;
-            display: flex; flex-direction: column; justify-content: space-between;
-            transition: all 0.2s;
-        }
-        .stat-card:hover { border-color: rgba(4, 134, 219, 0.2); }
-
-        /* 標籤 Tags */
-        .tag-box { display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 8px; font-size: 12px; font-weight: 600; margin: 4px; }
+        .grid-stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
+        @media (max-width: 992px) { .grid-stats { grid-template-columns: repeat(2, 1fr); } }
+        .stat-item { background: white; border: 1px solid #f1f5f9; border-radius: 12px; padding: 12px; display: flex; flex-direction: column; justify-content: space-between; }
+        .stat-header { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; }
+        .stat-icon { padding: 4px; border-radius: 6px; display: flex; align-items: center; justify-content: center; }
+        .stat-value { font-size: 18px; font-weight: 800; color: #1e293b; line-height: 1.2; }
+        .stat-unit { font-size: 10px; font-weight: 500; color: #94a3b8; margin-left: 2px; }
+        .tag-container { display: flex; flex-wrap: wrap; gap: 6px; }
+        .tag { display: inline-flex; align-items: center; padding: 3px 8px; border-radius: 6px; font-size: 12px; font-weight: 500; border: 1px solid transparent; cursor: default; }
+        .tag-count { background: rgba(255,255,255,0.8); padding: 0px 4px; border-radius: 4px; font-size: 10px; font-weight: 700; margin-left: 5px; }
+        .bg-orange { background: #fff7ed; color: #f97316; }
+        .bg-blue { background: #eff6ff; color: #3b82f6; }
+        .bg-cyan { background: #ecfeff; color: #06b6d4; }
+        .bg-red { background: #fef2f2; color: #ef4444; }
+        .bg-yellow { background: #fefce8; color: #eab308; }
         .tag-green { background: #ecfdf5; color: #047857; border: 1px solid #d1fae5; }
         .tag-red { background: #fff1f2; color: #be123c; border: 1px solid #ffe4e6; }
-        
-        .custom-header {
-            display: flex; align-items: center; gap: 12px; margin-bottom: 24px; 
-            padding: 16px; background: white; border-radius: 16px; 
-            border: 1px solid rgba(4, 134, 219, 0.1);
-            box-shadow: 0 2px 4px rgba(0,0,0,0.02);
-        }
-        .header-icon-box {
-            background: var(--blue); padding: 10px; border-radius: 12px; 
-            color: white; display: flex; align-items: center; justify-content: center;
-        }
+        .main-header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; padding: 16px; background: white; border-radius: 16px; border: 1px solid rgba(4, 134, 219, 0.1); }
+        .header-icon { background: #0486DB; padding: 10px; border-radius: 12px; color: white; display: flex; }
+        .bar-bg { height: 6px; width: 100%; background: #f1f5f9; border-radius: 99px; margin-top: 10px; overflow: hidden; }
+        .bar-fill { height: 100%; border-radius: 99px; }
     </style>
     """, unsafe_allow_html=True)
 
-# UI 渲染函式 (Header)
+# --- [V10.4 修正] UI 渲染 (移除縮排) ---
 def render_header(date_str):
+    icons = get_svg_icons()
+    return f"""<div class="main-header"><div class="header-icon">{icons['cat']}</div><div><div style="font-size:18px; font-weight:800; color:#1F1641;">咪咪的飲食日記</div><div style="font-size:13px; font-weight:500; color:#64748b;">{date_str}</div></div></div>"""
+
+def render_dashboard_content(day_stats, supp_list, med_list):
+    icons = get_svg_icons()
+    
+    def get_stat_html(icon, label, value, unit, color_class, bar_color, percent=0):
+        bar_html = f'<div class="bar-bg"><div class="bar-fill" style="width: {min(percent, 100)}%; background: {bar_color};"></div></div>' if percent > 0 else '<div style="height:6px; margin-top:10px"></div>'
+        return f"""<div class="stat-item"><div><div class="stat-header"><div class="stat-icon {color_class}">{icons[icon]}</div>{label}</div><div style="display:flex; align-items:baseline;"><span class="stat-value">{value}</span><span class="stat-unit">{unit}</span></div></div>{bar_html}</div>"""
+
+    def get_tag_html(items, type_class, icon_key):
+        if not items: return '<span style="color:#94a3b8; font-size:13px;">無</span>'
+        html = ""
+        for item in items:
+            html += f"""<span class="tag {type_class}">{icons[icon_key]} {item['name']}<span class="tag-count">x{int(item['count'])}</span></span>"""
+        return html
+
     return f"""
-    <div class="custom-header">
-        <div class="header-icon-box">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5c.67 0 1.35.09 2 .26 1.78-2 5.03-2.84 6.42-2.26 1.4.58-.42 7-.42 7 .57 1.07 1 2.24 1 3.44C21 17.9 16.97 21 12 21S3 17.9 3 13.44C3 12.24 3.43 11.07 4 10c0 0-1.82-6.42-.42-7 1.39-.58 4.64.26 6.42 2.26.65-.17 1.33-.26 2-.26z"/><path d="M9 13h.01"/><path d="M15 13h.01"/></svg>
-        </div>
-        <div>
-            <div style="font-size:18px; font-weight:800; color:#1F1641;">咪咪的飲食日記</div>
-            <div style="font-size:13px; font-weight:500; color:#64748b;">{date_str} • 今日狀況良好</div>
-        </div>
+<div class="dashboard-card">
+    <div class="section-title"><div class="section-icon bg-orange">{icons['activity']}</div>本日健康總覽</div>
+    <div class="grid-stats" style="margin-bottom: 20px;">
+        {get_stat_html("flame", "熱量", int(day_stats['cal']), "kcal", "bg-orange", "#f97316", day_stats['cal']/250)}
+        {get_stat_html("utensils", "食物", f"{day_stats['food']:.1f}", "g", "bg-blue", "#3b82f6")}
+        {get_stat_html("droplets", "飲水", f"{day_stats['water']:.1f}", "ml", "bg-cyan", "#06b6d4")}
+        {get_stat_html("beef", "蛋白質", f"{day_stats['prot']:.1f}", "g", "bg-red", "#ef4444")}
+        {get_stat_html("dna", "脂肪", f"{day_stats['fat']:.1f}", "g", "bg-yellow", "#eab308")}
     </div>
-    """
-
-# UI 渲染函式 (Stats)
-def render_stats_grid(stats_data):
-    def card(icon, label, value, unit, color):
-        return f"""
-        <div class="stat-card">
-            <div style="display:flex; align-items:center; gap:6px; margin-bottom:8px; font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase;">
-                <span style="color:{color};">{icon}</span> {label}
-            </div>
-            <div style="font-size:20px; font-weight:800; color:#1e293b;">
-                {value}<span style="font-size:11px; font-weight:500; color:#94a3b8; margin-left:2px;">{unit}</span>
-            </div>
-        </div>
-        """
-    
-    i_fire = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.1.2-2.2.6-3.3a1 1 0 0 0 2.1.7z"></path></svg>'
-    i_food = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>'
-    i_water = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 16.3c2.2 0 4-1.83 4-4.05 0-1.16-.57-2.26-1.71-3.19S7.29 6.75 7 5.3c-.29 1.45-1.14 2.84-2.29 3.76S3 11.1 3 12.25c0 2.22 1.8 4.05 4 4.05z"/><path d="M12.56 6.6A10.97 10.97 0 0 0 14 3.02c.5 2.5 2 4.9 4 6.5s3 3.5 3 5.5a6.98 6.98 0 0 1-11.91 4.97"/></svg>'
-    i_beef = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12.5" cy="8.5" r="2.5"/><path d="M12.5 2a6.5 6.5 0 0 0-6.22 4.6c-1.1 3.13-.78 6.43 1.48 9.17l2.92 2.92c.65.65 1.74.65 2.39 0l.97-.97a6 6 0 0 1 4.24-1.76h.04a6 6 0 0 0 3.79-1.35l.81-.81a2.5 2.5 0 0 0-3.54-3.54l-.47.47a1.5 1.5 0 0 1-2.12 0l-.88-.88a2.5 2.5 0 0 1 0-3.54l.84-.84c.76-.76.88-2 .2-2.86A6.5 6.5 0 0 0 12.5 2Z"/></svg>'
-    i_dna = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 15c6.638 0 12-5.362 12-12"/><path d="M10 21c6.638 0 12-5.362 12-12"/><path d="m2 3 20 18"/><path d="M12.818 8.182a4.92 4.92 0 0 0-1.636-1.636"/><path d="M16.364 11.728a9.862 9.862 0 0 0-3.092-3.092"/><path d="M9.272 15.364a9.862 9.862 0 0 0-3.092-3.092"/><path d="M12.818 18.91a4.92 4.92 0 0 0-1.636-1.636"/></svg>'
-
-    html = f"""
-    <div class="stat-grid">
-        {card(i_fire, "熱量", int(stats_data['cal']), "kcal", "#f97316")}
-        {card(i_food, "食物", f"{stats_data['food']:.1f}", "g", "#3b82f6")}
-        {card(i_water, "飲水", f"{stats_data['water']:.1f}", "ml", "#06b6d4")}
-        {card(i_beef, "蛋白質", f"{stats_data['prot']:.1f}", "g", "#ef4444")}
-        {card(i_dna, "脂肪", f"{stats_data['fat']:.1f}", "g", "#eab308")}
-    </div>
-    """
-    return html
-
-# [V10.3 新增] 補回 render_tags 函式
-def render_tags(supp_list, med_list):
-    def tag(text, count, type_cls):
-        return f'<span class="tag-box {type_cls}">{text} <span style="opacity:0.6; font-size:10px;">x{int(count)}</span></span>'
-    
-    html_supp = "".join([tag(i['name'], i['count'], "tag-green") for i in supp_list]) if supp_list else '<span style="color:#94a3b8; font-size:12px;">無</span>'
-    html_med = "".join([tag(i['name'], i['count'], "tag-red") for i in med_list]) if med_list else '<span style="color:#94a3b8; font-size:12px;">無</span>'
-    
-    return f"""
-    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px; margin-top:15px; padding-top:15px; border-top:1px solid #f1f5f9;">
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px; border-top: 1px solid #f1f5f9; padding-top: 15px;">
         <div>
             <div style="font-size:11px; font-weight:700; color:#94a3b8; margin-bottom:8px;">保養品</div>
-            <div style="display:flex; flex-wrap:wrap;">{html_supp}</div>
+            <div class="tag-container">{get_tag_html(supp_list, "tag-green", "leaf")}</div>
         </div>
         <div style="border-left:1px solid #f1f5f9; padding-left:15px;">
             <div style="font-size:11px; font-weight:700; color:#94a3b8; margin-bottom:8px;">藥品</div>
-            <div style="display:flex; flex-wrap:wrap;">{html_med}</div>
+            <div class="tag-container">{get_tag_html(med_list, "tag-red", "pill")}</div>
         </div>
+    </div>
+</div>
+"""
+
+def render_meal_stats_html(meal_stats):
+    icons = get_svg_icons()
+    def get_stat_html(icon, label, value, unit, color_class):
+        return f"""<div class="stat-item"><div class="stat-header"><div class="stat-icon {color_class}">{icons[icon]}</div>{label}</div><div style="display:flex; align-items:baseline;"><span class="stat-value">{value}</span><span class="stat-unit">{unit}</span></div></div>"""
+    
+    return f"""
+    <div class="grid-stats">
+        {get_stat_html("flame", "熱量", int(meal_stats['cal']), "kcal", "bg-orange")}
+        {get_stat_html("utensils", "食物", f"{meal_stats['food']:.1f}", "g", "bg-blue")}
+        {get_stat_html("droplets", "飲水", f"{meal_stats['water']:.1f}", "ml", "bg-cyan")}
+        {get_stat_html("beef", "蛋白", f"{meal_stats['prot']:.1f}", "g", "bg-red")}
+        {get_stat_html("dna", "脂肪", f"{meal_stats['fat']:.1f}", "g", "bg-yellow")}
     </div>
     """
 
@@ -358,12 +342,9 @@ def save_finish_callback(finish_type, waste_net, waste_cal, bowl_w, meal_n, fini
         sheet_log.append_row(row)
         st.toast("✅ 完食紀錄已更新 (舊紀錄已覆蓋)")
         load_data.clear()
-        
-        st.session_state.waste_gross = None
-        st.session_state.waste_tare = None
-        st.session_state.finish_error = None
-        
+        clear_finish_inputs_callback()
         st.session_state.just_saved = True
+        st.rerun()
     except Exception as e:
         st.session_state.finish_error = f"寫入失敗：{e}"
 
@@ -375,7 +356,7 @@ def clear_finish_inputs_callback():
 #      UI 佈局開始
 # ==========================================
 
-# [V10.3] 注入 CSS (必須最先執行)
+# 注入 CSS
 inject_custom_css()
 
 # 初始化狀態
@@ -450,9 +431,7 @@ if not df_log.empty:
                 counts = df_med.groupby('Item_Name')['Net_Quantity'].sum()
                 med_list = [{'name': k, 'count': v} for k, v in counts.items()]
 
-# ----------------------------------------------------
-# 2. 佈局實作
-# ----------------------------------------------------
+# --- 2. 佈局實作 ---
 date_display = record_date.strftime("%Y年 %m月 %d日")
 st.markdown(render_header(date_display), unsafe_allow_html=True)
 
@@ -461,18 +440,8 @@ col_dash, col_input = st.columns([4, 3], gap="medium")
 # --- 左欄：Dashboard ---
 with col_dash:
     with st.container():
-        st.markdown('<div class="dashboard-card">', unsafe_allow_html=True)
-        st.markdown(f"""
-        <div class="section-title">
-            <div class="section-icon bg-orange">
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
-            </div>
-            本日健康總覽
-        </div>
-        """, unsafe_allow_html=True)
-        st.markdown(render_stats_grid(day_stats), unsafe_allow_html=True)
-        st.markdown(render_tags(supp_list, med_list), unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
+        # 使用 HTML 函式渲染卡片
+        st.markdown(render_dashboard_content(day_stats, supp_list, med_list), unsafe_allow_html=True)
 
 # --- 右欄：操作區 ---
 with col_input:
@@ -537,7 +506,8 @@ with col_input:
             meal_stats['fat'] = df_meal_clean['Fat_Sub'].sum()
         
         with st.expander("📊 本餐營養小計", expanded=st.session_state.meal_stats_open):
-            st.markdown(render_stats_grid(meal_stats), unsafe_allow_html=True)
+            # 使用 HTML 函式渲染小計
+            st.markdown(render_meal_stats_html(meal_stats), unsafe_allow_html=True)
 
         st.divider()
 
@@ -568,82 +538,82 @@ with col_input:
             last_ref_weight = last_reading_db
             last_ref_name = last_item_db
 
-        # --- 新增 ---
+        # --- 新增模式 ---
         if nav_mode == "➕ 新增食物/藥品":
-            c1, c2 = st.columns(2)
-            with c1:
-                unique_cats = ["請選擇..."] + list(df_items['Category'].unique())
-                def on_cat_change(): st.session_state.scale_val = None
-                filter_cat = st.selectbox("1. 類別", unique_cats, key="cat_select", on_change=on_cat_change)
-                
-                if filter_cat == "請選擇..." or filter_cat == "全部":
-                    filtered_items = []
-                    if filter_cat == "全部": filtered_items = df_items['Item_Name'].tolist()
-                else:
-                    filtered_items = df_items[df_items['Category'] == filter_cat]['Item_Name'].tolist()
-
-            with c2:
-                item_name = st.selectbox("2. 品名", filtered_items if filtered_items else ["請先選類別"], key="item_select")
-
-            unit = unit_map.get(item_name, "g")
+            st.markdown(f"##### 🍽️ 編輯：{meal_name}")
             
-            c3, c4 = st.columns(2)
-            with c3:
-                if 'scale_val' not in st.session_state: st.session_state.scale_val = None
-                
-                if unit in ["顆", "粒", "錠", "膠囊", "次"]:
-                    scale_reading_ui = st.number_input(f"3. 數量 ({unit})", step=1.0, key="scale_val", value=None, placeholder="輸入數量")
-                    is_zeroed_ui = True 
-                else:
-                    scale_reading_ui = st.number_input("3. 秤重讀數 (g)", step=0.1, format="%.1f", key="scale_val", value=None, placeholder="輸入重量")
-                    st.caption(f"前筆: {last_ref_weight} g ({last_ref_name})")
-                    is_zeroed_ui = st.checkbox("⚖️ 已歸零 / 單獨秤重", value=False, key="check_zero")
-
-            with c4:
-                net_weight_disp = 0.0
-                calc_msg_disp = "請輸入"
-                
-                scale_val = safe_float(scale_reading_ui)
-                
-                if scale_val > 0:
-                    if unit in ["顆", "粒", "錠", "膠囊", "次"]:
-                        net_weight_disp = scale_val
-                        calc_msg_disp = f"單位: {unit}"
+            with st.container(border=True):
+                c1, c2 = st.columns(2)
+                with c1:
+                    unique_cats = ["請選擇..."] + list(df_items['Category'].unique())
+                    def on_cat_change(): st.session_state.scale_val = None
+                    filter_cat = st.selectbox("1. 類別", unique_cats, key="cat_select", on_change=on_cat_change)
+                    
+                    if filter_cat == "請選擇..." or filter_cat == "全部":
+                        filtered_items = []
+                        if filter_cat == "全部": filtered_items = df_items['Item_Name'].tolist()
                     else:
-                        if is_zeroed_ui:
-                            net_weight_disp = scale_val
-                            calc_msg_disp = "單獨秤重"
-                        else:
-                            if scale_val < last_ref_weight:
-                                calc_msg_disp = "⚠️ 數值異常"
-                                net_weight_disp = 0.0
-                            else:
-                                net_weight_disp = scale_val - last_ref_weight
-                                calc_msg_disp = f"扣除前筆 {last_ref_weight}"
+                        filtered_items = df_items[df_items['Category'] == filter_cat]['Item_Name'].tolist()
+
+                with c2:
+                    item_name = st.selectbox("2. 品名", filtered_items if filtered_items else ["請先選類別"], key="item_select")
+
+                unit = unit_map.get(item_name, "g")
                 
-                if "異常" in calc_msg_disp:
-                    st.metric("淨重", "---", delta=calc_msg_disp, delta_color="inverse")
-                else:
-                    st.metric("淨重", f"{net_weight_disp:.1f}", delta=calc_msg_disp, delta_color="off")
+                c3, c4 = st.columns(2)
+                with c3:
+                    if 'scale_val' not in st.session_state: st.session_state.scale_val = None
+                    
+                    if unit in ["顆", "粒", "錠", "膠囊", "次"]:
+                        scale_reading_ui = st.number_input(f"3. 數量 ({unit})", step=1.0, key="scale_val", value=None, placeholder="輸入數量")
+                        is_zeroed_ui = True 
+                    else:
+                        scale_reading_ui = st.number_input("3. 秤重讀數 (g)", step=0.1, format="%.1f", key="scale_val", value=None, placeholder="輸入重量")
+                        st.caption(f"前筆: {last_ref_weight} g ({last_ref_name})")
+                        is_zeroed_ui = st.checkbox("⚖️ 已歸零 / 單獨秤重", value=False, key="check_zero")
 
-            btn_disabled = False
-            if filter_cat == "請選擇..." or item_name == "請先選類別": btn_disabled = True
-            if scale_val <= 0: btn_disabled = True
-            if "異常" in calc_msg_disp: btn_disabled = True 
+                with c4:
+                    net_weight_disp = 0.0
+                    calc_msg_disp = "請輸入"
+                    scale_val = safe_float(scale_reading_ui)
+                    if scale_val > 0:
+                        if unit in ["顆", "粒", "錠", "膠囊", "次"]:
+                            net_weight_disp = scale_val
+                            calc_msg_disp = f"單位: {unit}"
+                        else:
+                            if is_zeroed_ui:
+                                net_weight_disp = scale_val
+                                calc_msg_disp = "單獨秤重"
+                            else:
+                                if scale_val < last_ref_weight:
+                                    calc_msg_disp = "⚠️ 數值異常"
+                                    net_weight_disp = 0.0
+                                else:
+                                    net_weight_disp = scale_val - last_ref_weight
+                                    calc_msg_disp = f"扣除前筆 {last_ref_weight}"
+                    
+                    if "異常" in calc_msg_disp:
+                        st.metric("淨重", "---", delta=calc_msg_disp, delta_color="inverse")
+                    else:
+                        st.metric("淨重", f"{net_weight_disp:.1f}", delta=calc_msg_disp, delta_color="off")
 
-            st.button("⬇️ 加入清單", 
-                      type="secondary", 
-                      use_container_width=True, 
-                      disabled=btn_disabled,
-                      on_click=add_to_cart_callback,
-                      args=(bowl_weight, last_ref_weight, last_ref_name)
-            )
+                btn_disabled = False
+                if filter_cat == "請選擇..." or item_name == "請先選類別": btn_disabled = True
+                if scale_val <= 0: btn_disabled = True
+                if "異常" in calc_msg_disp: btn_disabled = True 
+
+                st.button("⬇️ 加入清單", 
+                          type="secondary", 
+                          use_container_width=True, 
+                          disabled=btn_disabled,
+                          on_click=add_to_cart_callback,
+                          args=(bowl_weight, last_ref_weight, last_ref_name)
+                )
 
             if st.session_state.cart:
                 st.markdown("---")
                 st.markdown("##### 🛒 待存清單 (可編輯)")
                 df_cart = pd.DataFrame(st.session_state.cart)
-                
                 edited_df = st.data_editor(
                     df_cart,
                     use_container_width=True,
@@ -703,6 +673,9 @@ with col_input:
 
         # --- 完食 ---
         elif nav_mode == "🏁 完食/紀錄剩餘":
+            st.markdown(f"##### 🍽️ 編輯：{meal_name}")
+            st.caption("紀錄完食時間，若有剩餘，請將剩食倒入新容器(或原碗)秤重")
+            
             finish_date = st.date_input("完食日期", value=record_date, key="finish_date_picker")
             str_finish_date = finish_date.strftime("%Y/%m/%d")
             default_now = get_tw_time().strftime("%H%M")
