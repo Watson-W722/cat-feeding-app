@@ -1,4 +1,4 @@
-# Python 程式碼 V7.7 (五維數據儀表板版)
+# Python 程式碼 V10.2 (RWD 響應式介面終極版)
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -7,14 +7,10 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime, timedelta, timezone
 import uuid
+import textwrap
 
-# --- 1. 設定頁面 ---
-st.set_page_config(page_title="大文餵食紀錄", page_icon="🐱", layout="wide")
-
-# --- [V7.1] 狀態修復邏輯 ---
-if 'pending_meal' in st.session_state:
-    st.session_state.meal_selector = st.session_state.pending_meal
-    del st.session_state.pending_meal
+# --- 1. 設定頁面 (Wide Mode) ---
+st.set_page_config(page_title="咪咪的飲食日記", page_icon="🐱", layout="wide")
 
 # --- 小工具 ---
 def safe_float(value):
@@ -38,40 +34,29 @@ def format_time_str(t_str):
 
 # [V7.5] 清洗重複完食紀錄工具
 def clean_duplicate_finish_records(df):
-    if df.empty:
-        return df
+    if df.empty: return df
     mask_finish = df['ItemID'].isin(['WASTE', 'FINISH'])
     df_others = df[~mask_finish]
     df_finish = df[mask_finish]
-    if df_finish.empty:
-        return df
+    if df_finish.empty: return df
     df_finish_clean = df_finish.drop_duplicates(subset=['Meal_Name'], keep='last')
-    df_final = pd.concat([df_others, df_finish_clean], ignore_index=True)
-    return df_final
+    return pd.concat([df_others, df_finish_clean], ignore_index=True)
 
-# 智能權重拆分計算函式 (V7.0)
+# [V7.0] 智能權重拆分計算
 def calculate_intake_breakdown(df):
-    if df.empty:
-        return 0.0, 0.0
-    
-    if 'Category' in df.columns:
-        df['Category'] = df['Category'].astype(str).str.strip()
-    
+    if df.empty: return 0.0, 0.0
+    if 'Category' in df.columns: df['Category'] = df['Category'].astype(str).str.strip()
     exclude_list = ['藥品', '保養品']
     df_calc = df[~df['Category'].isin(exclude_list)].copy()
-    
-    if df_calc.empty:
-        return 0.0, 0.0
+    if df_calc.empty: return 0.0, 0.0
 
     df_input = df_calc[df_calc['Net_Quantity'] > 0]
     df_waste = df_calc[df_calc['Net_Quantity'] < 0]
     
     water_cats = ['水', '飲用水']
-    
     input_water = df_input[df_input['Category'].isin(water_cats)]['Net_Quantity'].sum()
     input_food = df_input[~df_input['Category'].isin(water_cats)]['Net_Quantity'].sum()
     total_input = input_water + input_food
-    
     total_waste = df_waste['Net_Quantity'].sum()
     
     if total_input > 0:
@@ -83,8 +68,150 @@ def calculate_intake_breakdown(df):
         
     final_water_net = input_water + (total_waste * ratio_water)
     final_food_net = input_food + (total_waste * ratio_food)
-    
     return final_food_net, final_water_net
+
+# --- [V10.2] CSS 注入 (RWD 與配色) ---
+def inject_custom_css():
+    st.markdown("""
+    <style>
+        /* 變數定義 (您的色碼) */
+        :root {
+            --navy: #1F1641;
+            --blue: #0486DB;
+            --cyan: #05ACD3;
+            --beige: #BBBF95;
+            --bg: #F8FAFC;
+        }
+
+        /* 全局樣式 */
+        .stApp { background-color: var(--bg); font-family: 'Segoe UI', sans-serif; color: var(--navy); }
+        
+        /* 隱藏 Streamlit 預設 Header padding */
+        .block-container { padding-top: 2rem; padding-bottom: 5rem; }
+
+        /* 統一卡片樣式 */
+        div[data-testid="stVerticalBlock"] > div[style*="background-color"] {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            border: 1px solid rgba(4, 134, 219, 0.1);
+            padding: 20px;
+        }
+
+        /* Expander 樣式優化 */
+        .streamlit-expanderHeader {
+            font-weight: 700;
+            color: var(--blue);
+            background-color: rgba(4, 134, 219, 0.05);
+            border-radius: 8px;
+        }
+
+        /* 標題與 Header */
+        .custom-header {
+            display: flex; align-items: center; gap: 12px; margin-bottom: 24px; 
+            padding: 16px; background: white; border-radius: 16px; 
+            border: 1px solid rgba(4, 134, 219, 0.1);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+        }
+        .header-icon-box {
+            background: var(--blue); padding: 10px; border-radius: 12px; 
+            color: white; display: flex; align-items: center; justify-content: center;
+        }
+
+        /* 數據卡片 Grid (RWD) */
+        .stat-grid {
+            display: grid; 
+            grid-template-columns: repeat(2, 1fr); 
+            gap: 12px;
+        }
+        /* 桌機版 (大於 768px) 變 3 欄或更多 */
+        @media (min-width: 992px) {
+            .stat-grid { grid-template-columns: repeat(5, 1fr); }
+        }
+
+        .stat-card {
+            background: white; border: 1px solid #f1f5f9; border-radius: 12px; padding: 12px;
+            display: flex; flex-direction: column; justify-content: space-between;
+            transition: all 0.2s;
+        }
+        .stat-card:hover { border-color: rgba(4, 134, 219, 0.2); }
+
+        /* 標籤 Tags */
+        .tag-box { 
+            display: inline-flex; align-items: center; padding: 4px 10px; 
+            border-radius: 8px; font-size: 12px; font-weight: 600; margin: 4px;
+        }
+        .tag-green { background: #ecfdf5; color: #047857; border: 1px solid #d1fae5; }
+        .tag-red { background: #fff1f2; color: #be123c; border: 1px solid #ffe4e6; }
+    </style>
+    """, unsafe_allow_html=True)
+
+# UI 渲染函式 (Header)
+def render_header(date_str):
+    html = f"""
+    <div class="custom-header">
+        <div class="header-icon-box">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5c.67 0 1.35.09 2 .26 1.78-2 5.03-2.84 6.42-2.26 1.4.58-.42 7-.42 7 .57 1.07 1 2.24 1 3.44C21 17.9 16.97 21 12 21S3 17.9 3 13.44C3 12.24 3.43 11.07 4 10c0 0-1.82-6.42-.42-7 1.39-.58 4.64.26 6.42 2.26.65-.17 1.33-.26 2-.26z"/><path d="M9 13h.01"/><path d="M15 13h.01"/></svg>
+        </div>
+        <div>
+            <div style="font-size:18px; font-weight:800; color:#1F1641;">咪咪的飲食日記</div>
+            <div style="font-size:13px; font-weight:500; color:#64748b;">{date_str} • 今日狀況良好</div>
+        </div>
+    </div>
+    """
+    return html
+
+# UI 渲染函式 (Stats)
+def render_stats_grid(stats_data):
+    # Helper to generate card
+    def card(icon, label, value, unit, color):
+        return f"""
+        <div class="stat-card">
+            <div style="display:flex; align-items:center; gap:6px; margin-bottom:8px; font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase;">
+                <span style="color:{color};">{icon}</span> {label}
+            </div>
+            <div style="font-size:20px; font-weight:800; color:#1e293b;">
+                {value}<span style="font-size:11px; font-weight:500; color:#94a3b8; margin-left:2px;">{unit}</span>
+            </div>
+        </div>
+        """
+    
+    # Icons
+    i_fire = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.1.2-2.2.6-3.3a1 1 0 0 0 2.1.7z"></path></svg>'
+    i_food = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>'
+    i_water = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 16.3c2.2 0 4-1.83 4-4.05 0-1.16-.57-2.26-1.71-3.19S7.29 6.75 7 5.3c-.29 1.45-1.14 2.84-2.29 3.76S3 11.1 3 12.25c0 2.22 1.8 4.05 4 4.05z"/><path d="M12.56 6.6A10.97 10.97 0 0 0 14 3.02c.5 2.5 2 4.9 4 6.5s3 3.5 3 5.5a6.98 6.98 0 0 1-11.91 4.97"/></svg>'
+    
+    html = f"""
+    <div class="stat-grid">
+        {card(i_fire, "熱量", int(stats_data['cal']), "kcal", "#f97316")}
+        {card(i_food, "食物", f"{stats_data['food']:.1f}", "g", "#3b82f6")}
+        {card(i_water, "飲水", f"{stats_data['water']:.1f}", "ml", "#06b6d4")}
+        {card(i_fire, "蛋白質", f"{stats_data['prot']:.1f}", "g", "#ef4444")}
+        {card(i_fire, "脂肪", f"{stats_data['fat']:.1f}", "g", "#eab308")}
+    </div>
+    """
+    return html
+
+# UI 渲染函式 (Tags)
+def render_tags(supp_list, med_list):
+    def tag(text, count, type_cls):
+        return f'<span class="tag-box {type_cls}">{text} <span style="opacity:0.6; font-size:10px;">x{int(count)}</span></span>'
+    
+    html_supp = "".join([tag(i['name'], i['count'], "tag-green") for i in supp_list]) if supp_list else '<span style="color:#94a3b8; font-size:12px;">無</span>'
+    html_med = "".join([tag(i['name'], i['count'], "tag-red") for i in med_list]) if med_list else '<span style="color:#94a3b8; font-size:12px;">無</span>'
+    
+    return f"""
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px; margin-top:15px; padding-top:15px; border-top:1px solid #f1f5f9;">
+        <div>
+            <div style="font-size:11px; font-weight:700; color:#94a3b8; margin-bottom:8px;">保養品</div>
+            <div style="display:flex; flex-wrap:wrap;">{html_supp}</div>
+        </div>
+        <div style="border-left:1px solid #f1f5f9; padding-left:15px;">
+            <div style="font-size:11px; font-weight:700; color:#94a3b8; margin-bottom:8px;">藥品</div>
+            <div style="display:flex; flex-wrap:wrap;">{html_med}</div>
+        </div>
+    </div>
+    """
 
 # --- 連線設定 ---
 @st.cache_resource
@@ -264,11 +391,13 @@ def clear_finish_inputs_callback():
 # ==========================================
 #      UI 佈局開始
 # ==========================================
-st.title("🐱 大文餵食紀錄")
+
+# 注入 CSS
+inject_custom_css()
 
 # 初始化狀態
-if 'dash_open' not in st.session_state: st.session_state.dash_open = False
 if 'meal_open' not in st.session_state: st.session_state.meal_open = False
+if 'meal_stats_open' not in st.session_state: st.session_state.meal_stats_open = True
 if 'just_saved' not in st.session_state: st.session_state.just_saved = False
 if 'finish_radio' not in st.session_state: st.session_state.finish_radio = "全部吃光 (盤光光)"
 if 'nav_mode' not in st.session_state: st.session_state.nav_mode = "➕ 新增食物/藥品"
@@ -303,17 +432,13 @@ with st.sidebar:
         st.rerun()
 
 # ----------------------------------------------------
-# 1. Dashboard 數據計算 (V7.7 五維數據版)
+# 1. 數據計算 (Backend Calculation)
 # ----------------------------------------------------
 df_today = pd.DataFrame()
-day_cal = 0.0
-day_food_net = 0.0
-day_water_net = 0.0
-day_prot = 0.0 # [新增]
-day_fat = 0.0  # [新增]
-
-supp_str = "無"
-med_str = "無"
+day_stats = {'cal':0, 'food':0, 'water':0, 'prot':0, 'fat':0}
+meal_stats = {'name': '尚未選擇', 'cal':0, 'food':0, 'water':0, 'prot':0, 'fat':0}
+supp_list = []
+med_list = []
 
 if not df_log.empty:
     df_today = df_log[df_log['Date'] == str_date_filter].copy()
@@ -321,376 +446,343 @@ if not df_log.empty:
         if 'Category' in df_today.columns:
             df_today['Category'] = df_today['Category'].astype(str).str.strip()
         
-        # 數值轉換，包含 Prot 和 Fat
-        num_cols = ['Cal_Sub', 'Net_Quantity', 'Prot_Sub', 'Fat_Sub']
-        for col in num_cols:
-            if col in df_today.columns:
-                df_today[col] = pd.to_numeric(df_today[col], errors='coerce').fillna(0)
+        for col in ['Cal_Sub', 'Net_Quantity', 'Prot_Sub', 'Fat_Sub']:
+            df_today[col] = pd.to_numeric(df_today[col], errors='coerce').fillna(0)
         
         df_today = clean_duplicate_finish_records(df_today)
         
         day_food_net, day_water_net = calculate_intake_breakdown(df_today)
-        day_cal = df_today['Cal_Sub'].sum()
-        day_prot = df_today['Prot_Sub'].sum() # [新增]
-        day_fat = df_today['Fat_Sub'].sum()   # [新增]
+        day_stats['cal'] = df_today['Cal_Sub'].sum()
+        day_stats['food'] = day_food_net
+        day_stats['water'] = day_water_net
+        day_stats['prot'] = df_today['Prot_Sub'].sum()
+        day_stats['fat'] = df_today['Fat_Sub'].sum()
 
         if 'Category' in df_today.columns:
             df_supp = df_today[df_today['Category'] == '保養品']
             if not df_supp.empty:
-                supp_counts = df_supp.groupby('Item_Name')['Net_Quantity'].sum()
-                supp_list = [f"{name}({int(val)})" for name, val in supp_counts.items()]
-                supp_str = "、".join(supp_list)
+                counts = df_supp.groupby('Item_Name')['Net_Quantity'].sum()
+                supp_list = [{'name': k, 'count': v} for k, v in counts.items()]
             
             df_med = df_today[df_today['Category'] == '藥品']
             if not df_med.empty:
-                med_counts = df_med.groupby('Item_Name')['Net_Quantity'].sum()
-                med_list = [f"{name}({int(val)})" for name, val in med_counts.items()]
-                med_str = "、".join(med_list)
-
-# Dashboard 顯示區
-with st.expander("📊 今日數據統計 (點擊收合)", expanded=st.session_state.dash_open):
-    dash_container = st.container()
+                counts = df_med.groupby('Item_Name')['Net_Quantity'].sum()
+                med_list = [{'name': k, 'count': v} for k, v in counts.items()]
 
 # ----------------------------------------------------
-# 2. 餐別設定
+# 2. 佈局實作 (Layout)
 # ----------------------------------------------------
-recorded_meals = []
-if not df_today.empty:
-    recorded_meals = df_today['Meal_Name'].unique().tolist()
 
-meal_options = ["第一餐", "第二餐", "第三餐", "第四餐", "第五餐", 
-                "第六餐", "第七餐", "第八餐", "第九餐", "第十餐", "點心"]
+# Header (跨欄)
+date_display = record_date.strftime("%Y年 %m月 %d日")
+st.markdown(render_header(date_display), unsafe_allow_html=True)
 
-default_meal_name = meal_options[0]
-for m in meal_options:
-    if m not in recorded_meals:
-        default_meal_name = m
-        break
+# 左右分欄 (左：總覽 / 右：操作)
+col_dash, col_input = st.columns([4, 3], gap="medium")
 
-if 'meal_selector' not in st.session_state:
-    st.session_state.meal_selector = default_meal_name
-
-with st.expander("🥣 餐別與碗重設定 (點擊收合)", expanded=st.session_state.meal_open):
-    c_meal, c_bowl = st.columns(2)
-    with c_meal:
-        def meal_formatter(m):
-            return f"{m} (已記)" if m in recorded_meals else m
+# --- 左欄：本日健康總覽 ---
+with col_dash:
+    # 使用 container 包裹卡片內容
+    with st.container():
+        st.markdown('<div class="dashboard-card">', unsafe_allow_html=True)
         
-        meal_name = st.selectbox(
-            "🍽️ 餐別", 
-            meal_options, 
-            format_func=meal_formatter,
-            key="meal_selector",
-            on_change=reset_meal_inputs
-        )
-    
-    last_bowl = 30.0
-    df_meal = pd.DataFrame()
-    
+        # Title
+        st.markdown("""
+        <div class="section-title">
+            <div class="section-icon bg-orange">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+            </div>
+            本日健康總覽
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Grid Stats
+        st.markdown(render_stats_grid(day_stats), unsafe_allow_html=True)
+        
+        # Tags
+        st.markdown(render_tags(supp_list, med_list), unsafe_allow_html=True)
+        
+        st.markdown('</div>', unsafe_allow_html=True)
+
+# --- 右欄：操作區 ---
+with col_input:
+    # A. 餐別與碗重設定
+    recorded_meals = []
     if not df_today.empty:
-        mask_meal = (df_today['Meal_Name'] == meal_name)
-        df_meal = df_today[mask_meal]
+        recorded_meals = df_today['Meal_Name'].unique().tolist()
+
+    meal_options = ["第一餐", "第二餐", "第三餐", "第四餐", "第五餐", 
+                    "第六餐", "第七餐", "第八餐", "第九餐", "第十餐", "點心"]
+
+    default_meal_name = meal_options[0]
+    for m in meal_options:
+        if m not in recorded_meals:
+            default_meal_name = m
+            break
+            
+    if 'meal_selector' not in st.session_state:
+        st.session_state.meal_selector = default_meal_name
+
+    # 使用 container 模擬卡片效果
+    with st.container(border=True):
+        st.markdown("#### 🍽️ 新增飲食紀錄")
+        
+        c_meal, c_bowl = st.columns(2)
+        with c_meal:
+            def meal_formatter(m):
+                return f"{m} (已記)" if m in recorded_meals else m
+            
+            meal_name = st.selectbox(
+                "餐別", 
+                meal_options, 
+                format_func=meal_formatter,
+                key="meal_selector",
+                on_change=reset_meal_inputs
+            )
+        
+        last_bowl = 30.0
+        df_meal = pd.DataFrame()
+        if not df_today.empty:
+            mask_meal = (df_today['Meal_Name'] == meal_name)
+            df_meal = df_today[mask_meal]
+            if not df_meal.empty:
+                try:
+                    last_bowl = float(df_meal.iloc[-1]['Bowl_Weight'])
+                except:
+                    pass
+        
+        with c_bowl:
+            bowl_weight = st.number_input("🥣 碗重 (g)", value=last_bowl, step=0.1, format="%.1f")
+
+        # B. 本餐小計 (可收合)
+        meal_stats['name'] = meal_name
+        if not df_meal.empty:
+            for col in ['Cal_Sub', 'Net_Quantity', 'Prot_Sub', 'Fat_Sub']:
+                df_meal[col] = pd.to_numeric(df_meal[col], errors='coerce').fillna(0)
+            
+            df_meal_clean = clean_duplicate_finish_records(df_meal)
+            m_food, m_water = calculate_intake_breakdown(df_meal_clean)
+            meal_stats['food'] = m_food
+            meal_stats['water'] = m_water
+            meal_stats['cal'] = df_meal_clean['Cal_Sub'].sum()
+            meal_stats['prot'] = df_meal_clean['Prot_Sub'].sum()
+            meal_stats['fat'] = df_meal_clean['Fat_Sub'].sum()
+
+        with st.expander("📊 本餐營養小計", expanded=st.session_state.meal_stats_open):
+            st.markdown(render_stats_grid(meal_stats), unsafe_allow_html=True)
+
+        st.divider()
+
+        # C. 新增/完食 切換
+        nav_mode = st.radio(
+            "操作模式", 
+            ["➕ 新增食物/藥品", "🏁 完食/紀錄剩餘"], 
+            horizontal=True,
+            label_visibility="collapsed",
+            key="nav_mode"
+        )
+
+        if 'cart' not in st.session_state: st.session_state.cart = []
+        
+        # 計算上一筆
+        last_reading_db = bowl_weight
+        last_item_db = "碗"
         if not df_meal.empty:
             try:
-                last_bowl = float(df_meal.iloc[-1]['Bowl_Weight'])
-            except:
-                pass
-    
-    with c_bowl:
-        bowl_weight = st.number_input("🥣 碗重 (g)", value=last_bowl, step=0.1, format="%.1f")
-
-    if not df_meal.empty:
-        with st.expander(f"📜 查看 {meal_name} 已記錄明細"):
-            view_df = df_meal[['Item_Name', 'Net_Quantity', 'Cal_Sub', 'Time']].copy()
-            def append_time_to_finish(row):
-                if '完食' in str(row['Item_Name']):
-                    time_str = str(row['Time'])[:5]
-                    return f"{row['Item_Name']} {time_str}"
-                return row['Item_Name']
-            view_df['Item_Name'] = view_df.apply(append_time_to_finish, axis=1)
-            view_df = view_df.drop(columns=['Time'])
-            view_df.columns = ['品名', '數量/重量', '熱量']
-            st.dataframe(view_df, use_container_width=True, hide_index=True)
-
-# --- 回填 Dashboard (計算本餐數據) ---
-meal_cal_sum = 0.0
-meal_food_net = 0.0
-meal_water_net = 0.0
-meal_prot = 0.0
-meal_fat = 0.0
-
-if not df_meal.empty:
-    num_cols = ['Cal_Sub', 'Net_Quantity', 'Prot_Sub', 'Fat_Sub']
-    for col in num_cols:
-        if col in df_meal.columns:
-            df_meal[col] = pd.to_numeric(df_meal[col], errors='coerce').fillna(0)
-    
-    df_meal_clean = clean_duplicate_finish_records(df_meal)
-    
-    meal_food_net, meal_water_net = calculate_intake_breakdown(df_meal_clean)
-    meal_cal_sum = df_meal_clean['Cal_Sub'].sum()
-    meal_prot = df_meal_clean['Prot_Sub'].sum()
-    meal_fat = df_meal_clean['Fat_Sub'].sum()
-
-# [V7.7 新版 Dashboard 排版]
-with dash_container:
-    st.markdown("#### 🔥 本日統計")
-    d1, d2, d3, d4, d5 = st.columns(5)
-    d1.metric("熱量", f"{day_cal:.0f} kcal")
-    d2.metric("食物", f"{day_food_net:.1f} g")
-    d3.metric("水", f"{day_water_net:.1f} g")
-    d4.metric("蛋白質", f"{day_prot:.1f} g")
-    d5.metric("脂肪", f"{day_fat:.1f} g")
-    
-    st.divider()
-    
-    st.markdown(f"#### 🍽️ 本餐小計 ({meal_name})")
-    m1, m2, m3, m4, m5 = st.columns(5)
-    m1.metric("熱量", f"{meal_cal_sum:.0f} kcal")
-    m2.metric("食物", f"{meal_food_net:.1f} g")
-    m3.metric("水", f"{meal_water_net:.1f} g")
-    m4.metric("蛋白質", f"{meal_prot:.1f} g")
-    m5.metric("脂肪", f"{meal_fat:.1f} g")
-    
-    if supp_str != "無" or med_str != "無":
-        st.caption(f"🌿 **保養**: {supp_str} | 💊 **藥品**: {med_str}")
-
-# ==========================================
-#      主畫面區塊 3：操作區
-# ==========================================
-
-if 'cart' not in st.session_state:
-    st.session_state.cart = []
-
-last_reading_db = bowl_weight
-last_item_db = "碗"
-if not df_meal.empty:
-    try:
-        df_food_only = df_meal[~df_meal['ItemID'].isin(['WASTE', 'FINISH'])]
-        if not df_food_only.empty:
-            last_reading_db = float(df_food_only.iloc[-1]['Scale_Reading'])
-            last_item_db = df_food_only.iloc[-1]['Item_Name']
-    except:
-        pass
-
-if len(st.session_state.cart) > 0:
-    last_ref_weight = st.session_state.cart[-1]['Scale_Reading']
-    last_ref_name = st.session_state.cart[-1]['Item_Name']
-else:
-    last_ref_weight = last_reading_db
-    last_ref_name = last_item_db
-
-nav_mode = st.radio(
-    "操作模式", 
-    ["➕ 新增食物/藥品", "🏁 完食/紀錄剩餘"], 
-    horizontal=True,
-    label_visibility="collapsed",
-    key="nav_mode"
-)
-
-# --- 模式 1: 新增 ---
-if nav_mode == "➕ 新增食物/藥品":
-    st.info(f"🍽️ 目前編輯：**{meal_name}**")
-    
-    with st.container(border=True):
-        c1, c2 = st.columns(2)
-        with c1:
-            unique_cats = ["請選擇..."] + list(df_items['Category'].unique())
-            def on_cat_change(): st.session_state.scale_val = None
-            filter_cat = st.selectbox("1. 類別", unique_cats, key="cat_select", on_change=on_cat_change)
-            
-            if filter_cat == "請選擇..." or filter_cat == "全部":
-                filtered_items = []
-                if filter_cat == "全部": filtered_items = df_items['Item_Name'].tolist()
-            else:
-                filtered_items = df_items[df_items['Category'] == filter_cat]['Item_Name'].tolist()
-
-        with c2:
-            item_name = st.selectbox("2. 品名", filtered_items if filtered_items else ["請先選類別"], key="item_select")
-
-        unit = unit_map.get(item_name, "g")
+                df_food_only = df_meal[~df_meal['ItemID'].isin(['WASTE', 'FINISH'])]
+                if not df_food_only.empty:
+                    last_reading_db = float(df_food_only.iloc[-1]['Scale_Reading'])
+                    last_item_db = df_food_only.iloc[-1]['Item_Name']
+            except: pass
         
-        c3, c4 = st.columns(2)
-        with c3:
-            if 'scale_val' not in st.session_state: st.session_state.scale_val = None
-            
-            if unit in ["顆", "粒", "錠", "膠囊", "次"]:
-                scale_reading_ui = st.number_input(f"3. 數量 ({unit})", step=1.0, key="scale_val", value=None, placeholder="輸入數量")
-                is_zeroed_ui = True 
-            else:
-                scale_reading_ui = st.number_input("3. 秤重讀數 (g)", step=0.1, format="%.1f", key="scale_val", value=None, placeholder="輸入重量")
-                st.caption(f"前筆: {last_ref_weight} g ({last_ref_name})")
-                is_zeroed_ui = st.checkbox("⚖️ 已歸零 / 單獨秤重", value=False, key="check_zero")
+        if len(st.session_state.cart) > 0:
+            last_ref_weight = st.session_state.cart[-1]['Scale_Reading']
+            last_ref_name = st.session_state.cart[-1]['Item_Name']
+        else:
+            last_ref_weight = last_reading_db
+            last_ref_name = last_item_db
 
-        with c4:
-            net_weight_disp = 0.0
-            calc_msg_disp = "請輸入"
+        # --- 新增模式 ---
+        if nav_mode == "➕ 新增食物/藥品":
+            st.info(f"🍽️ 目前編輯：**{meal_name}**")
             
-            scale_val = safe_float(scale_reading_ui)
-            
-            if scale_val > 0:
-                if unit in ["顆", "粒", "錠", "膠囊", "次"]:
-                    net_weight_disp = scale_val
-                    calc_msg_disp = f"單位: {unit}"
-                else:
-                    if is_zeroed_ui:
-                        net_weight_disp = scale_val
-                        calc_msg_disp = "單獨秤重"
+            with st.container(border=True):
+                c1, c2 = st.columns(2)
+                with c1:
+                    unique_cats = ["請選擇..."] + list(df_items['Category'].unique())
+                    def on_cat_change(): st.session_state.scale_val = None
+                    filter_cat = st.selectbox("1. 類別", unique_cats, key="cat_select", on_change=on_cat_change)
+                    
+                    if filter_cat == "請選擇..." or filter_cat == "全部":
+                        filtered_items = []
+                        if filter_cat == "全部": filtered_items = df_items['Item_Name'].tolist()
                     else:
-                        if scale_val < last_ref_weight:
-                            calc_msg_disp = "⚠️ 數值異常"
-                            net_weight_disp = 0.0
+                        filtered_items = df_items[df_items['Category'] == filter_cat]['Item_Name'].tolist()
+
+                with c2:
+                    item_name = st.selectbox("2. 品名", filtered_items if filtered_items else ["請先選類別"], key="item_select")
+
+                unit = unit_map.get(item_name, "g")
+                
+                c3, c4 = st.columns(2)
+                with c3:
+                    if 'scale_val' not in st.session_state: st.session_state.scale_val = None
+                    
+                    if unit in ["顆", "粒", "錠", "膠囊", "次"]:
+                        scale_reading_ui = st.number_input(f"3. 數量 ({unit})", step=1.0, key="scale_val", value=None, placeholder="輸入數量")
+                        is_zeroed_ui = True 
+                    else:
+                        scale_reading_ui = st.number_input("3. 秤重讀數 (g)", step=0.1, format="%.1f", key="scale_val", value=None, placeholder="輸入重量")
+                        st.caption(f"前筆: {last_ref_weight} g ({last_ref_name})")
+                        is_zeroed_ui = st.checkbox("⚖️ 已歸零 / 單獨秤重", value=False, key="check_zero")
+
+                with c4:
+                    net_weight_disp = 0.0
+                    calc_msg_disp = "請輸入"
+                    
+                    scale_val = safe_float(scale_reading_ui)
+                    
+                    if scale_val > 0:
+                        if unit in ["顆", "粒", "錠", "膠囊", "次"]:
+                            net_weight_disp = scale_val
+                            calc_msg_disp = f"單位: {unit}"
                         else:
-                            net_weight_disp = scale_val - last_ref_weight
-                            calc_msg_disp = f"扣除前筆 {last_ref_weight}"
+                            if is_zeroed_ui:
+                                net_weight_disp = scale_val
+                                calc_msg_disp = "單獨秤重"
+                            else:
+                                if scale_val < last_ref_weight:
+                                    calc_msg_disp = "⚠️ 數值異常"
+                                    net_weight_disp = 0.0
+                                else:
+                                    net_weight_disp = scale_val - last_ref_weight
+                                    calc_msg_disp = f"扣除前筆 {last_ref_weight}"
+                    
+                    if "異常" in calc_msg_disp:
+                        st.metric("淨重", "---", delta=calc_msg_disp, delta_color="inverse")
+                    else:
+                        st.metric("淨重", f"{net_weight_disp:.1f}", delta=calc_msg_disp, delta_color="off")
+
+                btn_disabled = False
+                if filter_cat == "請選擇..." or item_name == "請先選類別": btn_disabled = True
+                if scale_val <= 0: btn_disabled = True
+                if "異常" in calc_msg_disp: btn_disabled = True 
+
+                st.button("⬇️ 加入清單", 
+                          type="secondary", 
+                          use_container_width=True, 
+                          disabled=btn_disabled,
+                          on_click=add_to_cart_callback,
+                          args=(bowl_weight, last_ref_weight, last_ref_name)
+                )
+
+            if st.session_state.cart:
+                st.markdown("---")
+                st.markdown("##### 🛒 待存清單 (可編輯)")
+                df_cart = pd.DataFrame(st.session_state.cart)
+                edited_df = st.data_editor(
+                    df_cart,
+                    use_container_width=True,
+                    column_config={
+                        "Item_Name": "品名",
+                        "Net_Quantity": st.column_config.NumberColumn("數量/淨重", format="%.1f"),
+                        "Cal_Sub": st.column_config.NumberColumn("熱量", format="%.1f")
+                    },
+                    column_order=["Item_Name", "Net_Quantity", "Cal_Sub"],
+                    num_rows="dynamic",
+                    key="cart_editor"
+                )
+                
+                if not edited_df.empty:
+                    try:
+                        edited_df['Net_Quantity'] = pd.to_numeric(edited_df['Net_Quantity'], errors='coerce').fillna(0)
+                        edited_df['Cal_Sub'] = pd.to_numeric(edited_df['Cal_Sub'], errors='coerce').fillna(0)
+                        mask_total = ~edited_df['Category'].isin(['藥品', '保養品'])
+                        live_sum_net = edited_df[mask_total]['Net_Quantity'].sum()
+                        live_sum_cal = edited_df['Cal_Sub'].sum()
+                        st.info(f"∑ 總計 (不含藥)：{live_sum_net:.1f} g  |  🔥 {live_sum_cal:.1f} kcal")
+                    except: pass
+
+                if st.button("💾 儲存寫入 Google Sheet", type="primary", use_container_width=True):
+                    with st.spinner("寫入中..."):
+                        rows = []
+                        str_date = record_date.strftime("%Y/%m/%d")
+                        str_time = f"{record_time_str}:00"
+                        timestamp = f"{str_date} {str_time}"
+
+                        for i, row_data in edited_df.iterrows():
+                            orig_item = next((x for x in st.session_state.cart if x['Item_Name'] == row_data['Item_Name']), {})
+                            row = [
+                                str(uuid.uuid4()), timestamp, str_date, str_time, meal_name,
+                                orig_item.get('ItemID', ''), orig_item.get('Category', ''), 
+                                orig_item.get('Scale_Reading', 0), orig_item.get('Bowl_Weight', 0), 
+                                row_data['Net_Quantity'], row_data['Cal_Sub'],
+                                orig_item.get('Prot_Sub', 0), orig_item.get('Fat_Sub', 0), 
+                                orig_item.get('Phos_Sub', 0), "", row_data['Item_Name'], ""
+                            ]
+                            rows.append(row)
+                        try:
+                            sheet_log.append_rows(rows)
+                            st.toast("✅ 寫入成功！")
+                            st.session_state.cart = []
+                            next_index = 0
+                            if meal_name in meal_options:
+                                curr_idx = meal_options.index(meal_name)
+                                if curr_idx < len(meal_options) - 1: next_index = curr_idx + 1
+                                else: next_index = curr_idx
+                            st.session_state.pending_meal = meal_options[next_index]
+                            load_data.clear()
+                            st.session_state.just_saved = True
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"寫入失敗：{e}")
+
+        # --- 模式 2: 完食 ---
+        elif nav_mode == "🏁 完食/紀錄剩餘":
+            st.markdown(f"##### 🍽️ 編輯：{meal_name}")
+            st.caption("紀錄完食時間，若有剩餘，請將剩食倒入新容器(或原碗)秤重")
             
-            if "異常" in calc_msg_disp:
-                st.metric("淨重", "---", delta=calc_msg_disp, delta_color="inverse")
-            else:
-                st.metric("淨重", f"{net_weight_disp:.1f}", delta=calc_msg_disp, delta_color="off")
+            finish_date = st.date_input("完食日期", value=record_date, key="finish_date_picker")
+            str_finish_date = finish_date.strftime("%Y/%m/%d")
+            
+            default_now = get_tw_time().strftime("%H%M")
+            raw_finish_time = st.text_input("完食時間 (如 1806)", value=default_now, key="finish_time_input")
+            fmt_finish_time = format_time_str(raw_finish_time)
+            
+            st.caption(f"📝 將記錄為：{str_finish_date} **{fmt_finish_time}**")
 
-        btn_disabled = False
-        if filter_cat == "請選擇..." or item_name == "請先選類別": btn_disabled = True
-        if scale_val <= 0: btn_disabled = True
-        if "異常" in calc_msg_disp: btn_disabled = True 
-
-        st.button("⬇️ 加入清單", 
-                  type="secondary", 
-                  use_container_width=True, 
-                  disabled=btn_disabled,
-                  on_click=add_to_cart_callback,
-                  args=(bowl_weight, last_ref_weight, last_ref_name)
-        )
-
-    if st.session_state.cart:
-        st.write("##### 🛒 待存清單 (可編輯)")
-        df_cart = pd.DataFrame(st.session_state.cart)
-        
-        edited_df = st.data_editor(
-            df_cart,
-            use_container_width=True,
-            column_config={
-                "Item_Name": "品名",
-                "Net_Quantity": st.column_config.NumberColumn("數量/淨重", format="%.1f"),
-                "Cal_Sub": st.column_config.NumberColumn("熱量", format="%.1f")
-            },
-            column_order=["Item_Name", "Net_Quantity", "Cal_Sub"],
-            num_rows="dynamic",
-            key="cart_editor"
-        )
-        
-        if not edited_df.empty:
-            try:
-                edited_df['Net_Quantity'] = pd.to_numeric(edited_df['Net_Quantity'], errors='coerce').fillna(0)
-                edited_df['Cal_Sub'] = pd.to_numeric(edited_df['Cal_Sub'], errors='coerce').fillna(0)
+            finish_type = st.radio("狀態", ["全部吃光 (盤光光)", "有剩餘 (需秤重)"], horizontal=True, key="finish_radio")
+            waste_net = 0.0
+            waste_cal = 0.0
+            
+            if finish_type == "有剩餘 (需秤重)":
+                st.markdown("---")
+                c_w1, c_w2 = st.columns(2)
+                with c_w1:
+                    waste_gross = st.number_input("1. 容器+剩食 總重 (g)", min_value=0.0, step=0.1, key="waste_gross", value=None, placeholder="輸入總重")
+                with c_w2:
+                    waste_tare = st.number_input("2. 容器空重 (g)", min_value=0.0, step=0.1, key="waste_tare", value=None, placeholder="輸入空重")
+                val_gross = safe_float(waste_gross)
+                val_tare = safe_float(waste_tare)
+                waste_net = val_gross - val_tare
                 
-                mask_total = ~edited_df['Category'].isin(['藥品', '保養品'])
-                live_sum_net = edited_df[mask_total]['Net_Quantity'].sum()
-                live_sum_cal = edited_df['Cal_Sub'].sum()
-                
-                st.info(f"∑ 總計 (不含藥)：{live_sum_net:.1f} g  |  🔥 {live_sum_cal:.1f} kcal")
-            except:
-                st.caption("計算中...")
+                if waste_gross is not None and waste_tare is not None:
+                    if waste_net > 0:
+                        st.warning(f"📉 實際剩餘淨重：{waste_net:.1f} g")
+                        if not df_meal.empty:
+                            df_meal_clean = clean_duplicate_finish_records(df_meal)
+                            meal_foods = df_meal_clean[df_meal_clean['Net_Quantity'].apply(lambda x: safe_float(x)) > 0]
+                            exclude_meds = ['藥品', '保養品']
+                            if 'Category' in meal_foods.columns:
+                                meal_foods['Category'] = meal_foods['Category'].astype(str).str.strip()
+                                calc_df = meal_foods[~meal_foods['Category'].isin(exclude_meds)]
+                                total_in_cal = calc_df['Cal_Sub'].apply(safe_float).sum()
+                                total_in_weight = calc_df['Net_Quantity'].apply(safe_float).sum()
+                                if total_in_weight > 0:
+                                    avg_density = total_in_cal / total_in_weight
+                                    waste_cal = waste_net * avg_density
+                                    st.caption(f"預估扣除熱量：{waste_cal:.1f} kcal")
+                    elif val_gross > 0 and waste_net <= 0:
+                        st.error("空重不能大於總重！")
 
-        if st.button("💾 儲存寫入 Google Sheet", type="primary", use_container_width=True):
-            with st.spinner("寫入中..."):
-                rows = []
-                str_date = record_date.strftime("%Y/%m/%d")
-                str_time = f"{record_time_str}:00"
-                timestamp = f"{str_date} {str_time}"
-
-                for i, row_data in edited_df.iterrows():
-                    orig_item = next((x for x in st.session_state.cart if x['Item_Name'] == row_data['Item_Name']), {})
-                    row = [
-                        str(uuid.uuid4()), timestamp, str_date, str_time, meal_name,
-                        orig_item.get('ItemID', ''), orig_item.get('Category', ''), 
-                        orig_item.get('Scale_Reading', 0), orig_item.get('Bowl_Weight', 0), 
-                        row_data['Net_Quantity'], row_data['Cal_Sub'],
-                        orig_item.get('Prot_Sub', 0), orig_item.get('Fat_Sub', 0), 
-                        orig_item.get('Phos_Sub', 0), "", row_data['Item_Name'], ""
-                    ]
-                    rows.append(row)
-                
-                try:
-                    sheet_log.append_rows(rows)
-                    st.toast("✅ 寫入成功！")
-                    st.session_state.cart = []
-                    
-                    next_index = 0
-                    if meal_name in meal_options:
-                        curr_idx = meal_options.index(meal_name)
-                        if curr_idx < len(meal_options) - 1:
-                            next_index = curr_idx + 1
-                        else:
-                            next_index = curr_idx
-                    st.session_state.pending_meal = meal_options[next_index]
-                    
-                    load_data.clear()
-                    st.session_state.just_saved = True
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"寫入失敗：{e}")
-
-# --- 模式 2: 完食 ---
-elif nav_mode == "🏁 完食/紀錄剩餘":
-    st.info(f"🍽️ 目前編輯：**{meal_name}**")
-    st.caption("紀錄完食時間，若有剩餘，請將剩食倒入新容器(或原碗)秤重")
-    
-    finish_date = st.date_input("完食日期", value=record_date, key="finish_date_picker")
-    str_finish_date = finish_date.strftime("%Y/%m/%d")
-    
-    default_now = get_tw_time().strftime("%H%M")
-    raw_finish_time = st.text_input("完食時間 (如 1806)", value=default_now, key="finish_time_input")
-    fmt_finish_time = format_time_str(raw_finish_time)
-    
-    st.caption(f"📝 將記錄為：{str_finish_date} **{fmt_finish_time}**")
-
-    finish_type = st.radio(
-        "狀態", 
-        ["全部吃光 (盤光光)", "有剩餘 (需秤重)"], 
-        horizontal=True,
-        key="finish_radio"
-    )
-    
-    waste_net = 0.0
-    waste_cal = 0.0
-    
-    if finish_type == "有剩餘 (需秤重)":
-        st.markdown("---")
-        st.caption("請輸入「倒掉時」的秤重數據：")
-        
-        c_w1, c_w2 = st.columns(2)
-        with c_w1:
-            waste_gross = st.number_input("1. 容器+剩食 總重 (g)", min_value=0.0, step=0.1, key="waste_gross", value=None, placeholder="輸入總重")
-        with c_w2:
-            waste_tare = st.number_input("2. 容器空重 (g)", min_value=0.0, step=0.1, key="waste_tare", value=None, placeholder="輸入空重")
-        
-        val_gross = safe_float(waste_gross)
-        val_tare = safe_float(waste_tare)
-        waste_net = val_gross - val_tare
-        
-        if waste_gross is not None and waste_tare is not None:
-            if waste_net > 0:
-                st.warning(f"📉 實際剩餘淨重：{waste_net:.1f} g")
-                if not df_meal.empty:
-                    meal_foods = df_meal[df_meal['Net_Quantity'].apply(lambda x: safe_float(x)) > 0]
-                    exclude_meds = ['藥品', '保養品']
-                    if 'Category' in meal_foods.columns:
-                        meal_foods['Category'] = meal_foods['Category'].astype(str).str.strip()
-                        calc_df = meal_foods[~meal_foods['Category'].isin(exclude_meds)]
-                        
-                        total_in_cal = calc_df['Cal_Sub'].apply(safe_float).sum()
-                        total_in_weight = calc_df['Net_Quantity'].apply(safe_float).sum()
-                        
-                        if total_in_weight > 0:
-                            avg_density = total_in_cal / total_in_weight
-                            waste_cal = waste_net * avg_density
-                            st.caption(f"預估扣除熱量：{waste_cal:.1f} kcal")
-            elif val_gross > 0 and waste_net <= 0:
-                st.error("空重不能大於總重！")
-
-    st.button("💾 記錄完食/剩餘", 
-              type="primary",
-              on_click=save_finish_callback,
-              args=(finish_type, waste_net, waste_cal, bowl_weight, meal_name, fmt_finish_time, finish_date)
-    )
+            st.button("💾 記錄完食/剩餘", type="primary", on_click=save_finish_callback, args=(finish_type, waste_net, waste_cal, bowl_weight, meal_name, fmt_finish_time, finish_date))
