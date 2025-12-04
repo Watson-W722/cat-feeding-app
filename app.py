@@ -1,4 +1,4 @@
-# Python 程式碼 V10.7 (Dashboard 渲染修復版)
+# Python 程式碼 V10.8 (HTML 渲染終極修復版)
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -7,7 +7,7 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime, timedelta, timezone
 import uuid
-import textwrap
+import textwrap # 必須引入
 
 # --- 1. 設定頁面 ---
 st.set_page_config(page_title="咪咪的飲食日記", page_icon="🐱", layout="wide")
@@ -70,100 +70,64 @@ def calculate_intake_breakdown(df):
     final_food_net = input_food + (total_waste * ratio_food)
     return final_food_net, final_water_net
 
-# --- [V10.6] CSS 注入 (配色修正) ---
+# --- [V10.8] CSS 注入 (修復版面與配色) ---
 def inject_custom_css():
     st.markdown("""
     <style>
-        /* 定義新色票 */
         :root { 
-            --navy: #012172;   /* 主文字色 (您指定的深藍) */
-            --beige: #BBBF95;  /* 邊框/強調色 */
-            --bg: #F8FAFC;     /* 背景色 */
-            --text-muted: #5A6B8C; /* 次要文字色 */
+            --navy: #012172;
+            --beige: #BBBF95;
+            --bg: #F8FAFC;
+            --text-muted: #5A6B8C;
         }
-
-        /* 全局樣式 */
-        .stApp { 
-            background-color: var(--bg); 
-            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; 
-            color: var(--navy); 
-        }
-        
-        /* 強制所有標題和文字使用深藍色 */
-        h1, h2, h3, h4, h5, h6, p, span, div, label {
-            color: var(--navy);
-        }
-
+        .stApp { background-color: var(--bg); font-family: 'Segoe UI', sans-serif; color: var(--navy); }
         .block-container { padding-top: 2rem; padding-bottom: 5rem; }
-
-        /* Streamlit Container 樣式覆蓋 */
+        
+        /* Streamlit 原生容器樣式 */
         div[data-testid="stVerticalBlock"] > div[style*="background-color"] {
-            background: white; 
-            border-radius: 16px;
+            background: white; border-radius: 16px;
             box-shadow: 0 2px 6px rgba(0,0,0,0.04);
-            border: 1px solid rgba(1, 33, 114, 0.1); /* Navy border light */
+            border: 1px solid rgba(1, 33, 114, 0.1);
             padding: 24px;
         }
 
         /* HTML 卡片樣式 */
         .dashboard-card { 
-            background: white; 
-            border-radius: 16px; 
-            padding: 24px; 
+            background: white; border-radius: 16px; padding: 24px; 
             box-shadow: 0 2px 6px rgba(0,0,0,0.04); 
             border: 1px solid rgba(1, 33, 114, 0.1); 
             margin-bottom: 20px; 
         }
         
         .section-title { 
-            font-size: 20px; 
-            font-weight: 800; 
-            color: var(--navy) !important; 
-            display: flex; 
-            align-items: center; 
-            gap: 10px; 
-            margin-bottom: 20px; 
-            padding-bottom: 10px;
+            font-size: 20px; font-weight: 800; color: var(--navy) !important; 
+            display: flex; align-items: center; gap: 10px; 
+            margin-bottom: 20px; padding-bottom: 10px;
             border-bottom: 1px solid rgba(1, 33, 114, 0.1);
         }
-        .section-icon { 
-            padding: 8px; border-radius: 10px; 
-            display: flex; align-items: center; justify-content: center; 
-        }
+        .section-icon { padding: 8px; border-radius: 10px; display: flex; align-items: center; justify-content: center; }
         
-        /* 數據網格 */
+        /* Grid */
         .grid-stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
         @media (max-width: 992px) { .grid-stats { grid-template-columns: repeat(2, 1fr); } }
 
-        /* 數據單項 */
+        /* Stat Item */
         .stat-item { 
-            background: #fff; 
-            border: 1px solid #f1f5f9; 
-            border-radius: 12px; 
-            padding: 12px; 
+            background: #fff; border: 1px solid #f1f5f9; border-radius: 12px; padding: 12px; 
             display: flex; flex-direction: column; justify-content: space-between; 
         }
-        
         .stat-header { 
             display: flex; align-items: center; gap: 6px; margin-bottom: 4px; 
             font-size: 12px; font-weight: 700; color: var(--text-muted) !important; text-transform: uppercase; 
         }
         .stat-icon { padding: 4px; border-radius: 6px; display: flex; align-items: center; justify-content: center; }
-        
         .stat-value { 
-            font-size: 26px; 
-            font-weight: 900; 
-            color: var(--navy) !important; 
-            line-height: 1.1; 
+            font-size: 26px; font-weight: 900; color: var(--navy) !important; line-height: 1.1; 
         }
         .stat-unit { font-size: 12px; font-weight: 600; color: var(--text-muted) !important; margin-left: 2px; }
         
-        /* 本餐小計 (右欄 - 極簡版) */
-        .simple-stat-item {
-            text-align: center;
-            padding: 10px 4px;
-            border-right: 1px solid rgba(1, 33, 114, 0.1);
-        }
+        /* Simple Stat Item */
+        .simple-stat-item { text-align: center; padding: 10px 4px; border-right: 1px solid rgba(1, 33, 114, 0.1); }
         .simple-stat-item:last-child { border-right: none; }
         .simple-label { font-size: 12px; color: var(--text-muted) !important; font-weight: 700; margin-bottom: 4px; }
         .simple-value { font-size: 18px; color: var(--navy) !important; font-weight: 800; }
@@ -188,7 +152,6 @@ def inject_custom_css():
         .bg-cyan { background: #ecfeff; color: #06b6d4; }
         .bg-red { background: #fef2f2; color: #ef4444; }
         .bg-yellow { background: #fefce8; color: #eab308; }
-        
         .tag-green { background: #ecfdf5; border: 1px solid #d1fae5; color: #047857 !important; }
         .tag-red { background: #fff1f2; border: 1px solid #ffe4e6; color: #be123c !important; }
         
@@ -199,13 +162,12 @@ def inject_custom_css():
             box-shadow: 0 2px 4px rgba(0,0,0,0.02); 
         }
         .header-icon { background: var(--navy); padding: 10px; border-radius: 12px; color: white !important; display: flex; }
-        
         .bar-bg { height: 6px; width: 100%; background: #f1f5f9; border-radius: 99px; margin-top: 8px; overflow: hidden; }
         .bar-fill { height: 100%; border-radius: 99px; }
     </style>
     """, unsafe_allow_html=True)
 
-# UI 渲染函式 (Header)
+# --- UI 渲染函式 ---
 def render_header(date_str):
     cat_svg = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5c.67 0 1.35.09 2 .26 1.78-2 5.03-2.84 6.42-2.26 1.4.58-.42 7-.42 7 .57 1.07 1 2.24 1 3.44C21 17.9 16.97 21 12 21S3 17.9 3 13.44C3 12.24 3.43 11.07 4 10c0 0-1.82-6.42-.42-7 1.39-.58 4.64.26 6.42 2.26.65-.17 1.33-.26 2-.26z"/><path d="M9 13h.01"/><path d="M15 13h.01"/></svg>'
     return textwrap.dedent(f"""
@@ -218,7 +180,6 @@ def render_header(date_str):
     </div>
     """)
 
-# UI 渲染函式 (左欄 Dashboard) - [V10.7 修正：加入 textwrap.dedent]
 def render_dashboard_content(day_stats, supp_list, med_list):
     icons = {
         "activity": '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>',
@@ -233,7 +194,8 @@ def render_dashboard_content(day_stats, supp_list, med_list):
     
     def get_stat_html(icon, label, value, unit, color_class, bar_color, percent=0):
         bar_html = f'<div class="bar-bg"><div class="bar-fill" style="width: {min(percent, 100)}%; background: {bar_color};"></div></div>' if percent > 0 else '<div style="height:6px; margin-top:8px"></div>'
-        return f"""
+        # 使用 textwrap.dedent 確保內部 HTML 縮排正確
+        return textwrap.dedent(f"""
         <div class="stat-item">
             <div>
                 <div class="stat-header"><div class="stat-icon {color_class}">{icons[icon]}</div>{label}</div>
@@ -241,7 +203,7 @@ def render_dashboard_content(day_stats, supp_list, med_list):
             </div>
             {bar_html}
         </div>
-        """
+        """)
 
     def get_tag_html(items, type_class, icon_key):
         if not items: return '<span style="color:#5A6B8C; font-size:13px;">無</span>'
@@ -250,7 +212,6 @@ def render_dashboard_content(day_stats, supp_list, med_list):
             html += f"""<span class="tag {type_class}">{icons[icon_key]} {item['name']}<span class="tag-count">x{int(item['count'])}</span></span>"""
         return html
 
-    # [修正] 使用 textwrap.dedent 移除縮排
     return textwrap.dedent(f"""
     <div class="dashboard-card">
         <div class="section-title"><div class="section-icon bg-orange">{icons['activity']}</div>本日健康總覽</div>
@@ -280,7 +241,6 @@ def render_dashboard_content(day_stats, supp_list, med_list):
     </div>
     """)
 
-# [V10.5] 極簡本餐小計
 def render_meal_stats_simple(meal_stats):
     return textwrap.dedent(f"""
     <div style="display:grid; grid-template-columns: repeat(5, 1fr); gap:0; background:#FDFDF9; border:1px solid #BBBF95; border-radius:12px; padding:12px 0; margin-bottom:15px;">
@@ -522,9 +482,7 @@ with st.sidebar:
         load_data.clear()
         st.rerun()
 
-# ----------------------------------------------------
-# 1. 數據準備
-# ----------------------------------------------------
+# --- 1. 數據準備 ---
 df_today = pd.DataFrame()
 day_stats = {'cal':0, 'food':0, 'water':0, 'prot':0, 'fat':0}
 meal_stats = {'name': '尚未選擇', 'cal':0, 'food':0, 'water':0, 'prot':0, 'fat':0}
@@ -560,9 +518,7 @@ if not df_log.empty:
                 counts = df_med.groupby('Item_Name')['Net_Quantity'].sum()
                 med_list = [{'name': k, 'count': v} for k, v in counts.items()]
 
-# ----------------------------------------------------
-# 2. 佈局實作
-# ----------------------------------------------------
+# --- 2. 佈局實作 ---
 date_display = record_date.strftime("%Y年 %m月 %d日")
 st.markdown(render_header(date_display), unsafe_allow_html=True)
 
@@ -811,11 +767,9 @@ with col_input:
             
             finish_date = st.date_input("完食日期", value=record_date, key="finish_date_picker")
             str_finish_date = finish_date.strftime("%Y/%m/%d")
-            
             default_now = get_tw_time().strftime("%H%M")
             raw_finish_time = st.text_input("完食時間 (如 1806)", value=default_now, key="finish_time_input")
             fmt_finish_time = format_time_str(raw_finish_time)
-            
             st.caption(f"📝 將記錄為：{str_finish_date} **{fmt_finish_time}**")
 
             finish_type = st.radio("狀態", ["全部吃光 (盤光光)", "有剩餘 (需秤重)"], horizontal=True, key="finish_radio")
