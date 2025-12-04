@@ -1,4 +1,4 @@
-# Python 程式碼 V10.8 (HTML 渲染終極修復版)
+# Python 程式碼 V10.9 (HTML 結構重構版)
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -7,7 +7,6 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime, timedelta, timezone
 import uuid
-import textwrap # 必須引入
 
 # --- 1. 設定頁面 ---
 st.set_page_config(page_title="咪咪的飲食日記", page_icon="🐱", layout="wide")
@@ -70,7 +69,7 @@ def calculate_intake_breakdown(df):
     final_food_net = input_food + (total_waste * ratio_food)
     return final_food_net, final_water_net
 
-# --- [V10.8] CSS 注入 (修復版面與配色) ---
+# --- [V10.9] CSS 注入 (配色嚴格執行) ---
 def inject_custom_css():
     st.markdown("""
     <style>
@@ -83,7 +82,7 @@ def inject_custom_css():
         .stApp { background-color: var(--bg); font-family: 'Segoe UI', sans-serif; color: var(--navy); }
         .block-container { padding-top: 2rem; padding-bottom: 5rem; }
         
-        /* Streamlit 原生容器樣式 */
+        /* 卡片容器 */
         div[data-testid="stVerticalBlock"] > div[style*="background-color"] {
             background: white; border-radius: 16px;
             box-shadow: 0 2px 6px rgba(0,0,0,0.04);
@@ -105,13 +104,11 @@ def inject_custom_css():
             margin-bottom: 20px; padding-bottom: 10px;
             border-bottom: 1px solid rgba(1, 33, 114, 0.1);
         }
-        .section-icon { padding: 8px; border-radius: 10px; display: flex; align-items: center; justify-content: center; }
         
-        /* Grid */
+        /* 數據卡片 */
         .grid-stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
         @media (max-width: 992px) { .grid-stats { grid-template-columns: repeat(2, 1fr); } }
 
-        /* Stat Item */
         .stat-item { 
             background: #fff; border: 1px solid #f1f5f9; border-radius: 12px; padding: 12px; 
             display: flex; flex-direction: column; justify-content: space-between; 
@@ -121,19 +118,13 @@ def inject_custom_css():
             font-size: 12px; font-weight: 700; color: var(--text-muted) !important; text-transform: uppercase; 
         }
         .stat-icon { padding: 4px; border-radius: 6px; display: flex; align-items: center; justify-content: center; }
+        
         .stat-value { 
             font-size: 26px; font-weight: 900; color: var(--navy) !important; line-height: 1.1; 
         }
         .stat-unit { font-size: 12px; font-weight: 600; color: var(--text-muted) !important; margin-left: 2px; }
-        
-        /* Simple Stat Item */
-        .simple-stat-item { text-align: center; padding: 10px 4px; border-right: 1px solid rgba(1, 33, 114, 0.1); }
-        .simple-stat-item:last-child { border-right: none; }
-        .simple-label { font-size: 12px; color: var(--text-muted) !important; font-weight: 700; margin-bottom: 4px; }
-        .simple-value { font-size: 18px; color: var(--navy) !important; font-weight: 800; }
-        .simple-unit { font-size: 10px; color: var(--text-muted) !important; }
 
-        /* Tags */
+        /* 標籤 Tags */
         .tag-container { display: flex; flex-wrap: wrap; gap: 6px; }
         .tag { 
             display: inline-flex; align-items: center; padding: 4px 10px; 
@@ -152,6 +143,7 @@ def inject_custom_css():
         .bg-cyan { background: #ecfeff; color: #06b6d4; }
         .bg-red { background: #fef2f2; color: #ef4444; }
         .bg-yellow { background: #fefce8; color: #eab308; }
+        .bg-green { background: #ecfdf5; color: #047857; }
         .tag-green { background: #ecfdf5; border: 1px solid #d1fae5; color: #047857 !important; }
         .tag-red { background: #fff1f2; border: 1px solid #ffe4e6; color: #be123c !important; }
         
@@ -162,23 +154,38 @@ def inject_custom_css():
             box-shadow: 0 2px 4px rgba(0,0,0,0.02); 
         }
         .header-icon { background: var(--navy); padding: 10px; border-radius: 12px; color: white !important; display: flex; }
+        
         .bar-bg { height: 6px; width: 100%; background: #f1f5f9; border-radius: 99px; margin-top: 8px; overflow: hidden; }
         .bar-fill { height: 100%; border-radius: 99px; }
+
+        /* 右側極簡小計樣式 */
+        .simple-grid {
+            display: grid; grid-template-columns: repeat(5, 1fr); gap: 0;
+            background: #FDFDF9; border: 1px solid var(--beige);
+            border-radius: 12px; padding: 12px 0; margin-bottom: 15px;
+        }
+        .simple-item {
+            text-align: center; padding: 0 4px;
+            border-right: 1px solid rgba(1, 33, 114, 0.1);
+        }
+        .simple-item:last-child { border-right: none; }
+        .simple-label { font-size: 12px; color: var(--text-muted); font-weight: 700; margin-bottom: 4px; }
+        .simple-value { font-size: 18px; color: var(--navy); font-weight: 800; }
+        .simple-unit { font-size: 10px; color: var(--text-muted); margin-left: 2px; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- UI 渲染函式 ---
+# --- UI 渲染函式 (重寫：字串拼接法，避免縮排錯誤) ---
 def render_header(date_str):
     cat_svg = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5c.67 0 1.35.09 2 .26 1.78-2 5.03-2.84 6.42-2.26 1.4.58-.42 7-.42 7 .57 1.07 1 2.24 1 3.44C21 17.9 16.97 21 12 21S3 17.9 3 13.44C3 12.24 3.43 11.07 4 10c0 0-1.82-6.42-.42-7 1.39-.58 4.64.26 6.42 2.26.65-.17 1.33-.26 2-.26z"/><path d="M9 13h.01"/><path d="M15 13h.01"/></svg>'
-    return textwrap.dedent(f"""
-    <div class="main-header">
-        <div class="header-icon">{cat_svg}</div>
-        <div>
-            <div style="font-size:20px; font-weight:800; color:#012172;">咪咪的飲食日記</div>
-            <div style="font-size:14px; font-weight:500; color:#5A6B8C;">{date_str}</div>
-        </div>
-    </div>
-    """)
+    
+    html = f'<div class="main-header">'
+    html += f'<div class="header-icon">{cat_svg}</div>'
+    html += f'<div>'
+    html += f'<div style="font-size:20px; font-weight:800; color:#012172;">咪咪的飲食日記</div>'
+    html += f'<div style="font-size:14px; font-weight:500; color:#5A6B8C;">{date_str}</div>'
+    html += f'</div></div>'
+    return html
 
 def render_dashboard_content(day_stats, supp_list, med_list):
     icons = {
@@ -192,80 +199,66 @@ def render_dashboard_content(day_stats, supp_list, med_list):
         "leaf": '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.77 10-10 10Z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></svg>'
     }
     
+    # 生成數據卡片 HTML
     def get_stat_html(icon, label, value, unit, color_class, bar_color, percent=0):
         bar_html = f'<div class="bar-bg"><div class="bar-fill" style="width: {min(percent, 100)}%; background: {bar_color};"></div></div>' if percent > 0 else '<div style="height:6px; margin-top:8px"></div>'
-        # 使用 textwrap.dedent 確保內部 HTML 縮排正確
-        return textwrap.dedent(f"""
-        <div class="stat-item">
-            <div>
-                <div class="stat-header"><div class="stat-icon {color_class}">{icons[icon]}</div>{label}</div>
-                <div style="display:flex; align-items:baseline;"><span class="stat-value">{value}</span><span class="stat-unit">{unit}</span></div>
-            </div>
-            {bar_html}
-        </div>
-        """)
+        return f'<div class="stat-item"><div><div class="stat-header"><div class="stat-icon {color_class}">{icons[icon]}</div>{label}</div><div style="display:flex; align-items:baseline;"><span class="stat-value">{value}</span><span class="stat-unit">{unit}</span></div></div>{bar_html}</div>'
 
+    # 生成標籤 HTML
     def get_tag_html(items, type_class, icon_key):
         if not items: return '<span style="color:#5A6B8C; font-size:13px;">無</span>'
-        html = ""
+        tags_html = ""
         for item in items:
-            html += f"""<span class="tag {type_class}">{icons[icon_key]} {item['name']}<span class="tag-count">x{int(item['count'])}</span></span>"""
-        return html
+            tags_html += f'<span class="tag {type_class}">{icons[icon_key]} {item["name"]}<span class="tag-count">x{int(item["count"])}</span></span>'
+        return tags_html
 
-    return textwrap.dedent(f"""
-    <div class="dashboard-card">
-        <div class="section-title"><div class="section-icon bg-orange">{icons['activity']}</div>本日健康總覽</div>
-        
-        <div class="grid-stats" style="margin-bottom: 24px;">
-            {get_stat_html("flame", "熱量", int(day_stats['cal']), "kcal", "bg-orange", "#f97316", day_stats['cal']/250)}
-            {get_stat_html("utensils", "食物", f"{day_stats['food']:.1f}", "g", "bg-blue", "#3b82f6")}
-            {get_stat_html("droplets", "飲水", f"{day_stats['water']:.1f}", "ml", "bg-cyan", "#06b6d4")}
-            {get_stat_html("beef", "蛋白質", f"{day_stats['prot']:.1f}", "g", "bg-red", "#ef4444")}
-            {get_stat_html("dna", "脂肪", f"{day_stats['fat']:.1f}", "g", "bg-yellow", "#eab308")}
-        </div>
-        
-        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px; border-top: 1px solid #f1f5f9; padding-top: 16px;">
-            <div>
-                <div style="display:flex; align-items:center; gap:6px; margin-bottom:8px; font-size:12px; font-weight:700; color:#047857; text-transform:uppercase;">
-                    {icons['leaf']} 保養品
-                </div>
-                <div class="tag-container">{get_tag_html(supp_list, "tag-green", "leaf")}</div>
-            </div>
-            <div style="border-left:1px solid #f1f5f9; padding-left:20px;">
-                <div style="display:flex; align-items:center; gap:6px; margin-bottom:8px; font-size:12px; font-weight:700; color:#be123c; text-transform:uppercase;">
-                    {icons['pill']} 藥品
-                </div>
-                <div class="tag-container">{get_tag_html(med_list, "tag-red", "pill")}</div>
-            </div>
-        </div>
-    </div>
-    """)
+    # 組裝 Dashboard HTML
+    html = '<div class="dashboard-card">'
+    # Title
+    html += f'<div class="section-title"><div class="section-icon bg-orange">{icons["activity"]}</div>本日健康總覽</div>'
+    
+    # Stats Grid
+    html += '<div class="grid-stats" style="margin-bottom: 24px;">'
+    html += get_stat_html("flame", "熱量", int(day_stats['cal']), "kcal", "bg-orange", "#f97316", day_stats['cal']/250)
+    html += get_stat_html("utensils", "食物", f"{day_stats['food']:.1f}", "g", "bg-blue", "#3b82f6")
+    html += get_stat_html("droplets", "飲水", f"{day_stats['water']:.1f}", "ml", "bg-cyan", "#06b6d4")
+    html += get_stat_html("beef", "蛋白質", f"{day_stats['prot']:.1f}", "g", "bg-red", "#ef4444")
+    html += get_stat_html("dna", "脂肪", f"{day_stats['fat']:.1f}", "g", "bg-yellow", "#eab308")
+    html += '</div>'
+    
+    # Tags Grid
+    html += '<div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px; border-top: 1px solid #f1f5f9; padding-top: 16px;">'
+    
+    # Supplements
+    html += '<div>'
+    html += f'<div style="display:flex; align-items:center; gap:6px; margin-bottom:8px; font-size:12px; font-weight:700; color:#047857; text-transform:uppercase;">{icons["leaf"]} 保養品</div>'
+    html += f'<div class="tag-container">{get_tag_html(supp_list, "tag-green", "leaf")}</div>'
+    html += '</div>'
+    
+    # Meds
+    html += '<div style="border-left:1px solid #f1f5f9; padding-left:20px;">'
+    html += f'<div style="display:flex; align-items:center; gap:6px; margin-bottom:8px; font-size:12px; font-weight:700; color:#be123c; text-transform:uppercase;">{icons["pill"]} 藥品</div>'
+    html += f'<div class="tag-container">{get_tag_html(med_list, "tag-red", "pill")}</div>'
+    html += '</div>'
+    
+    html += '</div></div>' # End Dashboard Card
+    return html
 
+# [V10.5] 極簡本餐小計 (文字拼接版)
 def render_meal_stats_simple(meal_stats):
-    return textwrap.dedent(f"""
-    <div style="display:grid; grid-template-columns: repeat(5, 1fr); gap:0; background:#FDFDF9; border:1px solid #BBBF95; border-radius:12px; padding:12px 0; margin-bottom:15px;">
-        <div class="simple-stat-item">
-            <div class="simple-label">熱量</div>
-            <div class="simple-value">{int(meal_stats['cal'])}<span class="simple-unit">kcal</span></div>
-        </div>
-        <div class="simple-stat-item">
-            <div class="simple-label">食物</div>
-            <div class="simple-value">{meal_stats['food']:.1f}<span class="simple-unit">g</span></div>
-        </div>
-        <div class="simple-stat-item">
-            <div class="simple-label">飲水</div>
-            <div class="simple-value">{meal_stats['water']:.1f}<span class="simple-unit">ml</span></div>
-        </div>
-        <div class="simple-stat-item">
-            <div class="simple-label">蛋白</div>
-            <div class="simple-value">{meal_stats['prot']:.1f}<span class="simple-unit">g</span></div>
-        </div>
-        <div class="simple-stat-item">
-            <div class="simple-label">脂肪</div>
-            <div class="simple-value">{meal_stats['fat']:.1f}<span class="simple-unit">g</span></div>
-        </div>
-    </div>
-    """)
+    html = '<div class="simple-grid">'
+    
+    def simple_item(label, value, unit):
+        return f'<div class="simple-item"><div class="simple-label">{label}</div><div class="simple-value">{value}<span class="simple-unit">{unit}</span></div></div>'
+    
+    html += simple_item("熱量", int(meal_stats['cal']), "kcal")
+    html += simple_item("食物", f"{meal_stats['food']:.1f}", "g")
+    html += simple_item("飲水", f"{meal_stats['water']:.1f}", "ml")
+    html += simple_item("蛋白", f"{meal_stats['prot']:.1f}", "g")
+    html += simple_item("脂肪", f"{meal_stats['fat']:.1f}", "g")
+    
+    html += '</div>'
+    return html
 
 # --- 連線設定 ---
 @st.cache_resource
@@ -482,7 +475,9 @@ with st.sidebar:
         load_data.clear()
         st.rerun()
 
-# --- 1. 數據準備 ---
+# ----------------------------------------------------
+# 1. 數據準備
+# ----------------------------------------------------
 df_today = pd.DataFrame()
 day_stats = {'cal':0, 'food':0, 'water':0, 'prot':0, 'fat':0}
 meal_stats = {'name': '尚未選擇', 'cal':0, 'food':0, 'water':0, 'prot':0, 'fat':0}
@@ -518,7 +513,9 @@ if not df_log.empty:
                 counts = df_med.groupby('Item_Name')['Net_Quantity'].sum()
                 med_list = [{'name': k, 'count': v} for k, v in counts.items()]
 
-# --- 2. 佈局實作 ---
+# ----------------------------------------------------
+# 2. 佈局實作
+# ----------------------------------------------------
 date_display = record_date.strftime("%Y年 %m月 %d日")
 st.markdown(render_header(date_display), unsafe_allow_html=True)
 
@@ -527,7 +524,7 @@ col_dash, col_input = st.columns([4, 3], gap="medium")
 # --- 左欄：Dashboard ---
 with col_dash:
     with st.container():
-        # [修正] 使用 textwrap.dedent 的渲染函式
+        # [修正] 使用字串串接函數渲染
         st.markdown(render_dashboard_content(day_stats, supp_list, med_list), unsafe_allow_html=True)
 
 # --- 右欄：操作區 ---
@@ -593,6 +590,7 @@ with col_input:
             meal_stats['fat'] = df_meal_clean['Fat_Sub'].sum()
         
         with st.expander("📊 本餐營養小計", expanded=st.session_state.meal_stats_open):
+            # [修正] 渲染極簡小計
             st.markdown(render_meal_stats_simple(meal_stats), unsafe_allow_html=True)
 
         st.divider()
