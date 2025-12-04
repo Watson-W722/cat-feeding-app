@@ -1,4 +1,4 @@
-# Python 程式碼 V10.2 (RWD 響應式介面終極版)
+# Python 程式碼 V10.3 (React UI 修復與清理版)
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 import uuid
 import textwrap
 
-# --- 1. 設定頁面 (Wide Mode) ---
+# --- 1. 設定頁面 ---
 st.set_page_config(page_title="咪咪的飲食日記", page_icon="🐱", layout="wide")
 
 # --- 小工具 ---
@@ -74,39 +74,49 @@ def calculate_intake_breakdown(df):
 def inject_custom_css():
     st.markdown("""
     <style>
-        /* 變數定義 (您的色碼) */
-        :root {
-            --navy: #1F1641;
-            --blue: #0486DB;
-            --cyan: #05ACD3;
-            --beige: #BBBF95;
-            --bg: #F8FAFC;
-        }
+        /* 變數定義 */
+        :root { --navy: #1F1641; --blue: #0486DB; --cyan: #05ACD3; --beige: #BBBF95; --bg: #F8FAFC; }
 
         /* 全局樣式 */
         .stApp { background-color: var(--bg); font-family: 'Segoe UI', sans-serif; color: var(--navy); }
-        
-        /* 隱藏 Streamlit 預設 Header padding */
         .block-container { padding-top: 2rem; padding-bottom: 5rem; }
 
-        /* 統一卡片樣式 */
+        /* 卡片風格容器 */
         div[data-testid="stVerticalBlock"] > div[style*="background-color"] {
-            background: white;
-            border-radius: 16px;
+            background: white; border-radius: 16px;
             box-shadow: 0 1px 3px rgba(0,0,0,0.05);
             border: 1px solid rgba(4, 134, 219, 0.1);
             padding: 20px;
         }
 
-        /* Expander 樣式優化 */
-        .streamlit-expanderHeader {
-            font-weight: 700;
-            color: var(--blue);
-            background-color: rgba(4, 134, 219, 0.05);
-            border-radius: 8px;
+        /* 自定義 HTML 卡片樣式 */
+        .dashboard-card { 
+            background: white; border-radius: 16px; padding: 20px; 
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05); 
+            border: 1px solid rgba(4, 134, 219, 0.1); margin-bottom: 20px; 
         }
+        .section-title { 
+            font-size: 16px; font-weight: 700; color: #334155; 
+            display: flex; align-items: center; gap: 8px; margin-bottom: 16px; 
+        }
+        .section-icon { padding: 6px; border-radius: 8px; display: flex; align-items: center; justify-content: center; }
+        
+        /* 數據網格 */
+        .stat-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
+        @media (max-width: 992px) { .stat-grid { grid-template-columns: repeat(2, 1fr); } }
 
-        /* 標題與 Header */
+        .stat-card {
+            background: white; border: 1px solid #f1f5f9; border-radius: 12px; padding: 12px;
+            display: flex; flex-direction: column; justify-content: space-between;
+            transition: all 0.2s;
+        }
+        .stat-card:hover { border-color: rgba(4, 134, 219, 0.2); }
+
+        /* 標籤 Tags */
+        .tag-box { display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 8px; font-size: 12px; font-weight: 600; margin: 4px; }
+        .tag-green { background: #ecfdf5; color: #047857; border: 1px solid #d1fae5; }
+        .tag-red { background: #fff1f2; color: #be123c; border: 1px solid #ffe4e6; }
+        
         .custom-header {
             display: flex; align-items: center; gap: 12px; margin-bottom: 24px; 
             padding: 16px; background: white; border-radius: 16px; 
@@ -117,38 +127,12 @@ def inject_custom_css():
             background: var(--blue); padding: 10px; border-radius: 12px; 
             color: white; display: flex; align-items: center; justify-content: center;
         }
-
-        /* 數據卡片 Grid (RWD) */
-        .stat-grid {
-            display: grid; 
-            grid-template-columns: repeat(2, 1fr); 
-            gap: 12px;
-        }
-        /* 桌機版 (大於 768px) 變 3 欄或更多 */
-        @media (min-width: 992px) {
-            .stat-grid { grid-template-columns: repeat(5, 1fr); }
-        }
-
-        .stat-card {
-            background: white; border: 1px solid #f1f5f9; border-radius: 12px; padding: 12px;
-            display: flex; flex-direction: column; justify-content: space-between;
-            transition: all 0.2s;
-        }
-        .stat-card:hover { border-color: rgba(4, 134, 219, 0.2); }
-
-        /* 標籤 Tags */
-        .tag-box { 
-            display: inline-flex; align-items: center; padding: 4px 10px; 
-            border-radius: 8px; font-size: 12px; font-weight: 600; margin: 4px;
-        }
-        .tag-green { background: #ecfdf5; color: #047857; border: 1px solid #d1fae5; }
-        .tag-red { background: #fff1f2; color: #be123c; border: 1px solid #ffe4e6; }
     </style>
     """, unsafe_allow_html=True)
 
 # UI 渲染函式 (Header)
 def render_header(date_str):
-    html = f"""
+    return f"""
     <div class="custom-header">
         <div class="header-icon-box">
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5c.67 0 1.35.09 2 .26 1.78-2 5.03-2.84 6.42-2.26 1.4.58-.42 7-.42 7 .57 1.07 1 2.24 1 3.44C21 17.9 16.97 21 12 21S3 17.9 3 13.44C3 12.24 3.43 11.07 4 10c0 0-1.82-6.42-.42-7 1.39-.58 4.64.26 6.42 2.26.65-.17 1.33-.26 2-.26z"/><path d="M9 13h.01"/><path d="M15 13h.01"/></svg>
@@ -159,11 +143,9 @@ def render_header(date_str):
         </div>
     </div>
     """
-    return html
 
 # UI 渲染函式 (Stats)
 def render_stats_grid(stats_data):
-    # Helper to generate card
     def card(icon, label, value, unit, color):
         return f"""
         <div class="stat-card">
@@ -176,23 +158,24 @@ def render_stats_grid(stats_data):
         </div>
         """
     
-    # Icons
     i_fire = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.1.2-2.2.6-3.3a1 1 0 0 0 2.1.7z"></path></svg>'
     i_food = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>'
     i_water = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 16.3c2.2 0 4-1.83 4-4.05 0-1.16-.57-2.26-1.71-3.19S7.29 6.75 7 5.3c-.29 1.45-1.14 2.84-2.29 3.76S3 11.1 3 12.25c0 2.22 1.8 4.05 4 4.05z"/><path d="M12.56 6.6A10.97 10.97 0 0 0 14 3.02c.5 2.5 2 4.9 4 6.5s3 3.5 3 5.5a6.98 6.98 0 0 1-11.91 4.97"/></svg>'
-    
+    i_beef = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12.5" cy="8.5" r="2.5"/><path d="M12.5 2a6.5 6.5 0 0 0-6.22 4.6c-1.1 3.13-.78 6.43 1.48 9.17l2.92 2.92c.65.65 1.74.65 2.39 0l.97-.97a6 6 0 0 1 4.24-1.76h.04a6 6 0 0 0 3.79-1.35l.81-.81a2.5 2.5 0 0 0-3.54-3.54l-.47.47a1.5 1.5 0 0 1-2.12 0l-.88-.88a2.5 2.5 0 0 1 0-3.54l.84-.84c.76-.76.88-2 .2-2.86A6.5 6.5 0 0 0 12.5 2Z"/></svg>'
+    i_dna = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 15c6.638 0 12-5.362 12-12"/><path d="M10 21c6.638 0 12-5.362 12-12"/><path d="m2 3 20 18"/><path d="M12.818 8.182a4.92 4.92 0 0 0-1.636-1.636"/><path d="M16.364 11.728a9.862 9.862 0 0 0-3.092-3.092"/><path d="M9.272 15.364a9.862 9.862 0 0 0-3.092-3.092"/><path d="M12.818 18.91a4.92 4.92 0 0 0-1.636-1.636"/></svg>'
+
     html = f"""
     <div class="stat-grid">
         {card(i_fire, "熱量", int(stats_data['cal']), "kcal", "#f97316")}
         {card(i_food, "食物", f"{stats_data['food']:.1f}", "g", "#3b82f6")}
         {card(i_water, "飲水", f"{stats_data['water']:.1f}", "ml", "#06b6d4")}
-        {card(i_fire, "蛋白質", f"{stats_data['prot']:.1f}", "g", "#ef4444")}
-        {card(i_fire, "脂肪", f"{stats_data['fat']:.1f}", "g", "#eab308")}
+        {card(i_beef, "蛋白質", f"{stats_data['prot']:.1f}", "g", "#ef4444")}
+        {card(i_dna, "脂肪", f"{stats_data['fat']:.1f}", "g", "#eab308")}
     </div>
     """
     return html
 
-# UI 渲染函式 (Tags)
+# [V10.3 新增] 補回 render_tags 函式
 def render_tags(supp_list, med_list):
     def tag(text, count, type_cls):
         return f'<span class="tag-box {type_cls}">{text} <span style="opacity:0.6; font-size:10px;">x{int(count)}</span></span>'
@@ -392,10 +375,11 @@ def clear_finish_inputs_callback():
 #      UI 佈局開始
 # ==========================================
 
-# 注入 CSS
+# [V10.3] 注入 CSS (必須最先執行)
 inject_custom_css()
 
 # 初始化狀態
+if 'dash_open' not in st.session_state: st.session_state.dash_open = True
 if 'meal_open' not in st.session_state: st.session_state.meal_open = False
 if 'meal_stats_open' not in st.session_state: st.session_state.meal_stats_open = True
 if 'just_saved' not in st.session_state: st.session_state.just_saved = False
@@ -425,15 +409,12 @@ with st.sidebar:
     raw_record_time = st.text_input("🕒 時間 (如 0618)", value=default_sidebar_time)
     record_time_str = format_time_str(raw_record_time)
     st.caption(f"將記錄為：{record_time_str}")
-    st.caption("輸入數字後，點擊空白處即可生效")
     
     if st.button("🔄 重新整理數據"):
         load_data.clear()
         st.rerun()
 
-# ----------------------------------------------------
-# 1. 數據計算 (Backend Calculation)
-# ----------------------------------------------------
+# --- 1. 數據準備 ---
 df_today = pd.DataFrame()
 day_stats = {'cal':0, 'food':0, 'water':0, 'prot':0, 'fat':0}
 meal_stats = {'name': '尚未選擇', 'cal':0, 'food':0, 'water':0, 'prot':0, 'fat':0}
@@ -470,24 +451,18 @@ if not df_log.empty:
                 med_list = [{'name': k, 'count': v} for k, v in counts.items()]
 
 # ----------------------------------------------------
-# 2. 佈局實作 (Layout)
+# 2. 佈局實作
 # ----------------------------------------------------
-
-# Header (跨欄)
 date_display = record_date.strftime("%Y年 %m月 %d日")
 st.markdown(render_header(date_display), unsafe_allow_html=True)
 
-# 左右分欄 (左：總覽 / 右：操作)
 col_dash, col_input = st.columns([4, 3], gap="medium")
 
-# --- 左欄：本日健康總覽 ---
+# --- 左欄：Dashboard ---
 with col_dash:
-    # 使用 container 包裹卡片內容
     with st.container():
         st.markdown('<div class="dashboard-card">', unsafe_allow_html=True)
-        
-        # Title
-        st.markdown("""
+        st.markdown(f"""
         <div class="section-title">
             <div class="section-icon bg-orange">
                 <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
@@ -495,18 +470,12 @@ with col_dash:
             本日健康總覽
         </div>
         """, unsafe_allow_html=True)
-        
-        # Grid Stats
         st.markdown(render_stats_grid(day_stats), unsafe_allow_html=True)
-        
-        # Tags
         st.markdown(render_tags(supp_list, med_list), unsafe_allow_html=True)
-        
         st.markdown('</div>', unsafe_allow_html=True)
 
 # --- 右欄：操作區 ---
 with col_input:
-    # A. 餐別與碗重設定
     recorded_meals = []
     if not df_today.empty:
         recorded_meals = df_today['Meal_Name'].unique().tolist()
@@ -523,7 +492,6 @@ with col_input:
     if 'meal_selector' not in st.session_state:
         st.session_state.meal_selector = default_meal_name
 
-    # 使用 container 模擬卡片效果
     with st.container(border=True):
         st.markdown("#### 🍽️ 新增飲食紀錄")
         
@@ -554,7 +522,7 @@ with col_input:
         with c_bowl:
             bowl_weight = st.number_input("🥣 碗重 (g)", value=last_bowl, step=0.1, format="%.1f")
 
-        # B. 本餐小計 (可收合)
+        # 本餐小計
         meal_stats['name'] = meal_name
         if not df_meal.empty:
             for col in ['Cal_Sub', 'Net_Quantity', 'Prot_Sub', 'Fat_Sub']:
@@ -567,13 +535,12 @@ with col_input:
             meal_stats['cal'] = df_meal_clean['Cal_Sub'].sum()
             meal_stats['prot'] = df_meal_clean['Prot_Sub'].sum()
             meal_stats['fat'] = df_meal_clean['Fat_Sub'].sum()
-
+        
         with st.expander("📊 本餐營養小計", expanded=st.session_state.meal_stats_open):
             st.markdown(render_stats_grid(meal_stats), unsafe_allow_html=True)
 
         st.divider()
 
-        # C. 新增/完食 切換
         nav_mode = st.radio(
             "操作模式", 
             ["➕ 新增食物/藥品", "🏁 完食/紀錄剩餘"], 
@@ -584,7 +551,6 @@ with col_input:
 
         if 'cart' not in st.session_state: st.session_state.cart = []
         
-        # 計算上一筆
         last_reading_db = bowl_weight
         last_item_db = "碗"
         if not df_meal.empty:
@@ -602,84 +568,82 @@ with col_input:
             last_ref_weight = last_reading_db
             last_ref_name = last_item_db
 
-        # --- 新增模式 ---
+        # --- 新增 ---
         if nav_mode == "➕ 新增食物/藥品":
-            st.info(f"🍽️ 目前編輯：**{meal_name}**")
-            
-            with st.container(border=True):
-                c1, c2 = st.columns(2)
-                with c1:
-                    unique_cats = ["請選擇..."] + list(df_items['Category'].unique())
-                    def on_cat_change(): st.session_state.scale_val = None
-                    filter_cat = st.selectbox("1. 類別", unique_cats, key="cat_select", on_change=on_cat_change)
-                    
-                    if filter_cat == "請選擇..." or filter_cat == "全部":
-                        filtered_items = []
-                        if filter_cat == "全部": filtered_items = df_items['Item_Name'].tolist()
-                    else:
-                        filtered_items = df_items[df_items['Category'] == filter_cat]['Item_Name'].tolist()
-
-                with c2:
-                    item_name = st.selectbox("2. 品名", filtered_items if filtered_items else ["請先選類別"], key="item_select")
-
-                unit = unit_map.get(item_name, "g")
+            c1, c2 = st.columns(2)
+            with c1:
+                unique_cats = ["請選擇..."] + list(df_items['Category'].unique())
+                def on_cat_change(): st.session_state.scale_val = None
+                filter_cat = st.selectbox("1. 類別", unique_cats, key="cat_select", on_change=on_cat_change)
                 
-                c3, c4 = st.columns(2)
-                with c3:
-                    if 'scale_val' not in st.session_state: st.session_state.scale_val = None
-                    
+                if filter_cat == "請選擇..." or filter_cat == "全部":
+                    filtered_items = []
+                    if filter_cat == "全部": filtered_items = df_items['Item_Name'].tolist()
+                else:
+                    filtered_items = df_items[df_items['Category'] == filter_cat]['Item_Name'].tolist()
+
+            with c2:
+                item_name = st.selectbox("2. 品名", filtered_items if filtered_items else ["請先選類別"], key="item_select")
+
+            unit = unit_map.get(item_name, "g")
+            
+            c3, c4 = st.columns(2)
+            with c3:
+                if 'scale_val' not in st.session_state: st.session_state.scale_val = None
+                
+                if unit in ["顆", "粒", "錠", "膠囊", "次"]:
+                    scale_reading_ui = st.number_input(f"3. 數量 ({unit})", step=1.0, key="scale_val", value=None, placeholder="輸入數量")
+                    is_zeroed_ui = True 
+                else:
+                    scale_reading_ui = st.number_input("3. 秤重讀數 (g)", step=0.1, format="%.1f", key="scale_val", value=None, placeholder="輸入重量")
+                    st.caption(f"前筆: {last_ref_weight} g ({last_ref_name})")
+                    is_zeroed_ui = st.checkbox("⚖️ 已歸零 / 單獨秤重", value=False, key="check_zero")
+
+            with c4:
+                net_weight_disp = 0.0
+                calc_msg_disp = "請輸入"
+                
+                scale_val = safe_float(scale_reading_ui)
+                
+                if scale_val > 0:
                     if unit in ["顆", "粒", "錠", "膠囊", "次"]:
-                        scale_reading_ui = st.number_input(f"3. 數量 ({unit})", step=1.0, key="scale_val", value=None, placeholder="輸入數量")
-                        is_zeroed_ui = True 
+                        net_weight_disp = scale_val
+                        calc_msg_disp = f"單位: {unit}"
                     else:
-                        scale_reading_ui = st.number_input("3. 秤重讀數 (g)", step=0.1, format="%.1f", key="scale_val", value=None, placeholder="輸入重量")
-                        st.caption(f"前筆: {last_ref_weight} g ({last_ref_name})")
-                        is_zeroed_ui = st.checkbox("⚖️ 已歸零 / 單獨秤重", value=False, key="check_zero")
-
-                with c4:
-                    net_weight_disp = 0.0
-                    calc_msg_disp = "請輸入"
-                    
-                    scale_val = safe_float(scale_reading_ui)
-                    
-                    if scale_val > 0:
-                        if unit in ["顆", "粒", "錠", "膠囊", "次"]:
+                        if is_zeroed_ui:
                             net_weight_disp = scale_val
-                            calc_msg_disp = f"單位: {unit}"
+                            calc_msg_disp = "單獨秤重"
                         else:
-                            if is_zeroed_ui:
-                                net_weight_disp = scale_val
-                                calc_msg_disp = "單獨秤重"
+                            if scale_val < last_ref_weight:
+                                calc_msg_disp = "⚠️ 數值異常"
+                                net_weight_disp = 0.0
                             else:
-                                if scale_val < last_ref_weight:
-                                    calc_msg_disp = "⚠️ 數值異常"
-                                    net_weight_disp = 0.0
-                                else:
-                                    net_weight_disp = scale_val - last_ref_weight
-                                    calc_msg_disp = f"扣除前筆 {last_ref_weight}"
-                    
-                    if "異常" in calc_msg_disp:
-                        st.metric("淨重", "---", delta=calc_msg_disp, delta_color="inverse")
-                    else:
-                        st.metric("淨重", f"{net_weight_disp:.1f}", delta=calc_msg_disp, delta_color="off")
+                                net_weight_disp = scale_val - last_ref_weight
+                                calc_msg_disp = f"扣除前筆 {last_ref_weight}"
+                
+                if "異常" in calc_msg_disp:
+                    st.metric("淨重", "---", delta=calc_msg_disp, delta_color="inverse")
+                else:
+                    st.metric("淨重", f"{net_weight_disp:.1f}", delta=calc_msg_disp, delta_color="off")
 
-                btn_disabled = False
-                if filter_cat == "請選擇..." or item_name == "請先選類別": btn_disabled = True
-                if scale_val <= 0: btn_disabled = True
-                if "異常" in calc_msg_disp: btn_disabled = True 
+            btn_disabled = False
+            if filter_cat == "請選擇..." or item_name == "請先選類別": btn_disabled = True
+            if scale_val <= 0: btn_disabled = True
+            if "異常" in calc_msg_disp: btn_disabled = True 
 
-                st.button("⬇️ 加入清單", 
-                          type="secondary", 
-                          use_container_width=True, 
-                          disabled=btn_disabled,
-                          on_click=add_to_cart_callback,
-                          args=(bowl_weight, last_ref_weight, last_ref_name)
-                )
+            st.button("⬇️ 加入清單", 
+                      type="secondary", 
+                      use_container_width=True, 
+                      disabled=btn_disabled,
+                      on_click=add_to_cart_callback,
+                      args=(bowl_weight, last_ref_weight, last_ref_name)
+            )
 
             if st.session_state.cart:
                 st.markdown("---")
                 st.markdown("##### 🛒 待存清單 (可編輯)")
                 df_cart = pd.DataFrame(st.session_state.cart)
+                
                 edited_df = st.data_editor(
                     df_cart,
                     use_container_width=True,
@@ -737,18 +701,13 @@ with col_input:
                         except Exception as e:
                             st.error(f"寫入失敗：{e}")
 
-        # --- 模式 2: 完食 ---
+        # --- 完食 ---
         elif nav_mode == "🏁 完食/紀錄剩餘":
-            st.markdown(f"##### 🍽️ 編輯：{meal_name}")
-            st.caption("紀錄完食時間，若有剩餘，請將剩食倒入新容器(或原碗)秤重")
-            
             finish_date = st.date_input("完食日期", value=record_date, key="finish_date_picker")
             str_finish_date = finish_date.strftime("%Y/%m/%d")
-            
             default_now = get_tw_time().strftime("%H%M")
             raw_finish_time = st.text_input("完食時間 (如 1806)", value=default_now, key="finish_time_input")
             fmt_finish_time = format_time_str(raw_finish_time)
-            
             st.caption(f"📝 將記錄為：{str_finish_date} **{fmt_finish_time}**")
 
             finish_type = st.radio("狀態", ["全部吃光 (盤光光)", "有剩餘 (需秤重)"], horizontal=True, key="finish_radio")
