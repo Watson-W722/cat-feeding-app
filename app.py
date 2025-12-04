@@ -1,4 +1,4 @@
-#  Python 程式碼 V9.1 (函式名稱修復版)
+# Python 程式碼 V10.0 (React 風格全整合版)
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 import uuid
 
 # --- 1. 設定頁面 ---
-st.set_page_config(page_title="大文餵食紀錄", page_icon="🐱", layout="wide")
+st.set_page_config(page_title="咪咪的飲食日記", page_icon="🐱", layout="centered") # 改為 centered 比較像 App
 
 # --- 小工具 ---
 def safe_float(value):
@@ -69,10 +69,9 @@ def calculate_intake_breakdown(df):
     final_food_net = input_food + (total_waste * ratio_food)
     return final_food_net, final_water_net
 
-# --- [V9.0] React 風格 UI 渲染函式 ---
-def render_react_style_dashboard(day_stats, meal_stats, supp_list, med_list, current_date_str):
-    # 定義 SVG 圖示
-    icons = {
+# --- [V10.0] UI 渲染系統 ---
+def get_svg_icons():
+    return {
         "flame": '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.1.2-2.2.6-3.3a1 1 0 0 0 2.1.7z"></path></svg>',
         "utensils": '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>',
         "droplets": '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 16.3c2.2 0 4-1.83 4-4.05 0-1.16-.57-2.26-1.71-3.19S7.29 6.75 7 5.3c-.29 1.45-1.14 2.84-2.29 3.76S3 11.1 3 12.25c0 2.22 1.8 4.05 4 4.05z"/><path d="M12.56 6.6A10.97 10.97 0 0 0 14 3.02c.5 2.5 2 4.9 4 6.5s3 3.5 3 5.5a6.98 6.98 0 0 1-11.91 4.97"/></svg>',
@@ -81,12 +80,18 @@ def render_react_style_dashboard(day_stats, meal_stats, supp_list, med_list, cur
         "pill": '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7Z"/><path d="m8.5 8.5 7 7"/></svg>',
         "leaf": '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.77 10-10 10Z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></svg>',
         "activity": '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>',
-        "calendar": '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/></svg>'
+        "calendar": '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/></svg>',
+        "cat": '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5c.67 0 1.35.09 2 .26 1.78-2 5.03-2.84 6.42-2.26 1.4.58-.42 7-.42 7 .57 1.07 1 2.24 1 3.44C21 17.9 16.97 21 12 21S3 17.9 3 13.44C3 12.24 3.43 11.07 4 10c0 0-1.82-6.42-.42-7 1.39-.58 4.64.26 6.42 2.26.65-.17 1.33-.26 2-.26z"/><path d="M9 13h.01"/><path d="M15 13h.01"/></svg>'
     }
+    return icons
 
-    style = """
+def render_custom_css():
+    return """
     <style>
-        .main-container { font-family: 'Segoe UI', sans-serif; color: #1F1641; }
+        /* 全局字體與背景 */
+        .stApp { background-color: #F8FAFC; color: #1F1641; font-family: 'Segoe UI', sans-serif; }
+        
+        /* 卡片樣式 */
         .dashboard-card { 
             background: white; 
             border-radius: 16px; 
@@ -95,77 +100,64 @@ def render_react_style_dashboard(day_stats, meal_stats, supp_list, med_list, cur
             border: 1px solid rgba(4, 134, 219, 0.1); 
             margin-bottom: 20px; 
         }
+        
+        /* 標題樣式 */
         .section-title { 
-            font-size: 16px; 
-            font-weight: 700; 
-            color: #334155; 
-            display: flex; 
-            align-items: center; 
-            gap: 8px; 
-            margin-bottom: 16px; 
+            font-size: 16px; font-weight: 700; color: #334155; 
+            display: flex; align-items: center; gap: 8px; margin-bottom: 16px; 
         }
         .section-icon { padding: 6px; border-radius: 8px; display: flex; align-items: center; justify-content: center; }
-        .grid-stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
-        @media (max-width: 768px) { .grid-stats { grid-template-columns: repeat(2, 1fr); } }
+        
+        /* 數據網格 */
+        .grid-stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+        @media (max-width: 640px) { .grid-stats { grid-template-columns: repeat(2, 1fr); } }
+        
+        /* 數據單項 */
         .stat-item { 
-            background: white; 
-            border: 1px solid #f1f5f9; 
-            border-radius: 12px; 
-            padding: 12px; 
-            display: flex; 
-            flex-direction: column; 
-            justify-content: space-between; 
-            transition: all 0.2s;
+            background: white; border: 1px solid #f1f5f9; border-radius: 12px; padding: 12px; 
+            display: flex; flex-direction: column; justify-content: space-between; 
         }
-        .stat-header { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
+        .stat-header { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; }
         .stat-icon { padding: 4px; border-radius: 6px; display: flex; align-items: center; justify-content: center; }
-        .stat-value { font-size: 20px; font-weight: 800; color: #1e293b; line-height: 1.2; }
-        .stat-unit { font-size: 11px; font-weight: 500; color: #94a3b8; margin-left: 2px; }
-        .tag-container { display: flex; flex-wrap: wrap; gap: 8px; }
+        .stat-value { font-size: 18px; font-weight: 800; color: #1e293b; line-height: 1.2; }
+        .stat-unit { font-size: 10px; font-weight: 500; color: #94a3b8; margin-left: 2px; }
+        
+        /* 標籤 Tags */
+        .tag-container { display: flex; flex-wrap: wrap; gap: 6px; }
         .tag { 
-            display: inline-flex; 
-            align-items: center; 
-            padding: 4px 10px; 
-            border-radius: 8px; 
-            font-size: 13px; 
-            font-weight: 500; 
-            border: 1px solid transparent; 
-            cursor: default;
+            display: inline-flex; align-items: center; padding: 3px 8px; 
+            border-radius: 6px; font-size: 12px; font-weight: 500; 
         }
         .tag-count { 
-            background: rgba(255,255,255,0.8); 
-            padding: 1px 5px; 
-            border-radius: 4px; 
-            font-size: 10px; 
-            font-weight: 700; 
-            margin-left: 6px; 
-            box-shadow: 0 1px 1px rgba(0,0,0,0.05);
+            background: rgba(255,255,255,0.8); padding: 0px 4px; 
+            border-radius: 4px; font-size: 10px; font-weight: 700; margin-left: 5px; 
         }
+        
+        /* 配色 */
         .bg-orange { background: #fff7ed; color: #f97316; }
         .bg-blue { background: #eff6ff; color: #3b82f6; }
         .bg-cyan { background: #ecfeff; color: #06b6d4; }
         .bg-red { background: #fef2f2; color: #ef4444; }
         .bg-yellow { background: #fefce8; color: #eab308; }
-        .tag-green { background: #ecfdf5; color: #047857; border-color: #d1fae5; }
-        .tag-red { background: #fff1f2; color: #be123c; border-color: #ffe4e6; }
-        .bar-bg { height: 6px; width: 100%; background: #f1f5f9; border-radius: 99px; margin-top: 10px; overflow: hidden; }
-        .bar-fill { height: 100%; border-radius: 99px; transition: width 0.5s ease; }
-        .main-header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; padding: 16px; background: white; border-radius: 16px; border: 1px solid rgba(4, 134, 219, 0.1); }
-        .header-icon { background: #4f46e5; padding: 10px; border-radius: 12px; color: white; display: flex; }
+        .tag-green { background: #ecfdf5; color: #047857; border: 1px solid #d1fae5; }
+        .tag-red { background: #fff1f2; color: #be123c; border: 1px solid #ffe4e6; }
+        
+        /* Header */
+        .main-header { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; padding: 16px; background: white; border-radius: 16px; border: 1px solid rgba(4, 134, 219, 0.1); }
+        .header-icon { background: #0486DB; padding: 10px; border-radius: 12px; color: white; display: flex; }
     </style>
     """
 
-    def get_stat_html(icon, label, value, unit, color_class, bar_color, percent=0):
-        bar_html = f'<div class="bar-bg"><div class="bar-fill" style="width: {min(percent, 100)}%; background: {bar_color};"></div></div>' if percent > 0 else '<div style="height:6px; margin-top:10px"></div>'
+def render_daily_overview(day_stats, supp_list, med_list, current_date_str):
+    icons = get_svg_icons()
+    
+    def get_stat_html(icon, label, value, unit, color_class):
         return f"""
-<div class="stat-item">
-    <div>
-        <div class="stat-header"><div class="stat-icon {color_class}">{icons[icon]}</div>{label}</div>
-        <div style="display:flex; align-items:baseline;"><span class="stat-value">{value}</span><span class="stat-unit">{unit}</span></div>
-    </div>
-    {bar_html}
-</div>
-"""
+        <div class="stat-item">
+            <div class="stat-header"><div class="stat-icon {color_class}">{icons[icon]}</div>{label}</div>
+            <div style="display:flex; align-items:baseline;"><span class="stat-value">{value}</span><span class="stat-unit">{unit}</span></div>
+        </div>
+        """
 
     def get_tag_html(items, type_class, icon_key):
         if not items: return '<span style="color:#94a3b8; font-size:13px;">無</span>'
@@ -174,68 +166,69 @@ def render_react_style_dashboard(day_stats, meal_stats, supp_list, med_list, cur
             html += f"""<span class="tag {type_class}">{icons[icon_key]} {item['name']}<span class="tag-count">x{int(item['count'])}</span></span>"""
         return html
 
-    # Header
-    header_html = f"""
-<div class="main-header">
-    <div class="header-icon">{icons['calendar']}</div>
-    <div>
-        <div style="font-size:18px; font-weight:800; color:#1e293b;">今日健康日誌</div>
-        <div style="font-size:13px; font-weight:500; color:#64748b;">{current_date_str}</div>
-    </div>
-</div>
-"""
-
-    # 本日總計
-    daily_html = f"""
-<div class="dashboard-card">
-    <div class="section-title">
-        <div class="section-icon bg-orange">{icons['activity']}</div>
-        本日總計
-    </div>
-    <div class="grid-stats">
-        {get_stat_html("flame", "熱量", int(day_stats['cal']), "kcal", "bg-orange", "#f97316", day_stats['cal']/2.5)}
-        {get_stat_html("utensils", "食物", f"{day_stats['food']:.1f}", "g", "bg-blue", "#3b82f6")}
-        {get_stat_html("droplets", "飲水", f"{day_stats['water']:.1f}", "ml", "bg-cyan", "#06b6d4", day_stats['water']/2)}
-        {get_stat_html("beef", "蛋白質", f"{day_stats['prot']:.1f}", "g", "bg-red", "#ef4444", day_stats['prot']/0.6)}
-        {get_stat_html("dna", "脂肪", f"{day_stats['fat']:.1f}", "g", "bg-yellow", "#eab308", day_stats['fat']/0.15)}
-    </div>
-</div>
-"""
-
-    # 本餐小計
-    meal_html = f"""
-<div class="dashboard-card">
-    <div class="section-title">
-        <div class="section-icon bg-blue">{icons['utensils']}</div>本餐小計
-        <span style="margin-left:auto; font-size:12px; background:#eff6ff; color:#3b82f6; padding:3px 10px; border-radius:99px; font-weight:700;">{meal_stats['name']}</span>
-    </div>
-    <div class="grid-stats">
-        {get_stat_html("flame", "熱量", int(meal_stats['cal']), "kcal", "bg-orange", "#f97316")}
-        {get_stat_html("utensils", "食物", f"{meal_stats['food']:.1f}", "g", "bg-blue", "#3b82f6")}
-        {get_stat_html("droplets", "飲水", f"{meal_stats['water']:.1f}", "ml", "bg-cyan", "#06b6d4")}
-        {get_stat_html("beef", "蛋白質", f"{meal_stats['prot']:.1f}", "g", "bg-red", "#ef4444")}
-        {get_stat_html("dna", "脂肪", f"{meal_stats['fat']:.1f}", "g", "bg-yellow", "#eab308")}
-    </div>
-</div>
-"""
-
-    # 藥品與保養品
-    supp_med_html = f"""
-<div class="dashboard-card">
-    <div class="section-title"><div class="section-icon bg-green" style="background:#ecfdf5; color:#047857;">{icons['pill']}</div>保養與藥品紀錄</div>
-    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px;">
+    html = f"""
+    <div class="main-header">
+        <div class="header-icon">{icons['cat']}</div>
         <div>
-            <div style="font-size:11px; font-weight:700; color:#94a3b8; margin-bottom:8px; text-transform:uppercase; letter-spacing:0.5px;">保養品清單</div>
-            <div class="tag-container">{get_tag_html(supp_list, "tag-green", "leaf")}</div>
-        </div>
-        <div style="border-left:1px solid #f1f5f9; padding-left:20px;">
-            <div style="font-size:11px; font-weight:700; color:#94a3b8; margin-bottom:8px; text-transform:uppercase; letter-spacing:0.5px;">藥品清單</div>
-            <div class="tag-container">{get_tag_html(med_list, "tag-red", "pill")}</div>
+            <div style="font-size:18px; font-weight:800; color:#1F1641;">咪咪的飲食日記</div>
+            <div style="font-size:13px; font-weight:500; color:#64748b;">{current_date_str}</div>
         </div>
     </div>
-</div>
-"""
-    return style + "<div class='main-container'>" + header_html + daily_html + meal_html + supp_med_html + "</div>"
+    
+    <div class="dashboard-card">
+        <div class="section-title"><div class="section-icon bg-orange">{icons['activity']}</div>本日健康總覽</div>
+        
+        <div class="grid-stats" style="margin-bottom: 20px;">
+            {get_stat_html("flame", "熱量", int(day_stats['cal']), "kcal", "bg-orange")}
+            {get_stat_html("utensils", "食物", f"{day_stats['food']:.1f}", "g", "bg-blue")}
+            {get_stat_html("droplets", "飲水", f"{day_stats['water']:.1f}", "ml", "bg-cyan")}
+            {get_stat_html("beef", "蛋白質", f"{day_stats['prot']:.1f}", "g", "bg-red")}
+            {get_stat_html("dna", "脂肪", f"{day_stats['fat']:.1f}", "g", "bg-yellow")}
+        </div>
+        
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px; border-top: 1px solid #f1f5f9; padding-top: 15px;">
+            <div>
+                <div style="font-size:11px; font-weight:700; color:#94a3b8; margin-bottom:8px;">保養品</div>
+                <div class="tag-container">{get_tag_html(supp_list, "tag-green", "leaf")}</div>
+            </div>
+            <div style="border-left:1px solid #f1f5f9; padding-left:15px;">
+                <div style="font-size:11px; font-weight:700; color:#94a3b8; margin-bottom:8px;">藥品</div>
+                <div class="tag-container">{get_tag_html(med_list, "tag-red", "pill")}</div>
+            </div>
+        </div>
+    </div>
+    """
+    return html
+
+def render_meal_stats(meal_stats):
+    icons = get_svg_icons()
+    
+    def get_stat_html(icon, label, value, unit, color_class):
+        return f"""
+        <div class="stat-item" style="padding:8px;">
+            <div class="stat-header" style="margin-bottom:4px;">
+                <div class="stat-icon {color_class}" style="padding:2px;">{icons[icon]}</div>
+                <span style="font-size:10px;">{label}</span>
+            </div>
+            <div style="text-align:center;">
+                <span class="stat-value" style="font-size:16px;">{value}</span>
+                <span class="stat-unit" style="font-size:10px;">{unit}</span>
+            </div>
+        </div>
+        """
+        
+    html = f"""
+    <div style="background:#f8fafc; border-radius:12px; padding:12px; border:1px solid #e2e8f0; margin-bottom:15px;">
+        <div class="grid-stats">
+            {get_stat_html("flame", "熱量", int(meal_stats['cal']), "kcal", "bg-orange")}
+            {get_stat_html("utensils", "食物", f"{meal_stats['food']:.1f}", "g", "bg-blue")}
+            {get_stat_html("droplets", "飲水", f"{meal_stats['water']:.1f}", "ml", "bg-cyan")}
+            {get_stat_html("beef", "蛋白", f"{meal_stats['prot']:.1f}", "g", "bg-red")}
+            {get_stat_html("dna", "脂肪", f"{meal_stats['fat']:.1f}", "g", "bg-yellow")}
+        </div>
+    </div>
+    """
+    return html
 
 # --- 連線設定 ---
 @st.cache_resource
@@ -348,7 +341,6 @@ def add_to_cart_callback(bowl_w, last_ref_w, last_ref_n):
     
     st.session_state.scale_val = None
     st.session_state.check_zero = False
-    st.session_state.meal_open = False
     st.session_state.just_saved = True
 
 def save_finish_callback(finish_type, waste_net, waste_cal, bowl_w, meal_n, finish_time_str, record_date_obj):
@@ -399,12 +391,9 @@ def save_finish_callback(finish_type, waste_net, waste_cal, bowl_w, meal_n, fini
         sheet_log.append_row(row)
         st.toast("✅ 完食紀錄已更新 (舊紀錄已覆蓋)")
         load_data.clear()
-        
-        st.session_state.waste_gross = None
-        st.session_state.waste_tare = None
-        st.session_state.finish_error = None
-        
+        clear_finish_inputs_callback()
         st.session_state.just_saved = True
+        st.rerun()
     except Exception as e:
         st.session_state.finish_error = f"寫入失敗：{e}"
 
@@ -415,15 +404,16 @@ def clear_finish_inputs_callback():
 # ==========================================
 #      UI 佈局開始
 # ==========================================
-# st.title("🐱 大文餵食紀錄") # 已移至 HTML Header
+
+# 注入 CSS
+st.markdown(render_custom_css(), unsafe_allow_html=True)
 
 # 初始化狀態
-if 'dash_open' not in st.session_state: st.session_state.dash_open = True
-if 'meal_open' not in st.session_state: st.session_state.meal_open = False
 if 'just_saved' not in st.session_state: st.session_state.just_saved = False
 if 'finish_radio' not in st.session_state: st.session_state.finish_radio = "全部吃光 (盤光光)"
 if 'nav_mode' not in st.session_state: st.session_state.nav_mode = "➕ 新增食物/藥品"
 if 'finish_error' not in st.session_state: st.session_state.finish_error = None
+if 'meal_stats_open' not in st.session_state: st.session_state.meal_stats_open = False # 預設收合
 
 # 自動捲動
 if st.session_state.just_saved:
@@ -436,7 +426,7 @@ if st.session_state.just_saved:
     components.html(js, height=0)
     st.session_state.just_saved = False
 
-# --- 側邊欄 ---
+# --- 側邊欄 (Menu) ---
 with st.sidebar:
     st.header("⚙️ 設定")
     tw_now = get_tw_time()
@@ -447,13 +437,14 @@ with st.sidebar:
     raw_record_time = st.text_input("🕒 時間 (如 0618)", value=default_sidebar_time)
     record_time_str = format_time_str(raw_record_time)
     st.caption(f"將記錄為：{record_time_str}")
-    st.caption("輸入數字後，點擊空白處即可生效")
     
     if st.button("🔄 重新整理數據"):
         load_data.clear()
         st.rerun()
 
-# --- 1. 數據準備 ---
+# ----------------------------------------------------
+# 1. 數據計算 (Backend Calculation)
+# ----------------------------------------------------
 df_today = pd.DataFrame()
 day_stats = {'cal':0, 'food':0, 'water':0, 'prot':0, 'fat':0}
 meal_stats = {'name': '尚未選擇', 'cal':0, 'food':0, 'water':0, 'prot':0, 'fat':0}
@@ -489,28 +480,33 @@ if not df_log.empty:
                 counts = df_med.groupby('Item_Name')['Net_Quantity'].sum()
                 med_list = [{'name': k, 'count': v} for k, v in counts.items()]
 
-# --- 2. Dashboard (React Style) ---
-with st.expander("📊 今日數據統計 (點擊收合)", expanded=st.session_state.dash_open):
-    dashboard_ph = st.empty()
+# ----------------------------------------------------
+# 2. 介面渲染 (UI Rendering)
+# ----------------------------------------------------
 
-# --- 3. 餐別設定 ---
-recorded_meals = []
-if not df_today.empty:
-    recorded_meals = df_today['Meal_Name'].unique().tolist()
+# A. 本日總覽卡片
+st.markdown(render_daily_overview(day_stats, supp_list, med_list, record_date.strftime("%Y年 %m月 %d日")), unsafe_allow_html=True)
 
-meal_options = ["第一餐", "第二餐", "第三餐", "第四餐", "第五餐", 
-                "第六餐", "第七餐", "第八餐", "第九餐", "第十餐", "點心"]
+# B. 操作大區塊
+with st.container(border=True):
+    # 預備資料：餐別清單
+    recorded_meals = []
+    if not df_today.empty:
+        recorded_meals = df_today['Meal_Name'].unique().tolist()
+    
+    meal_options = ["第一餐", "第二餐", "第三餐", "第四餐", "第五餐", 
+                    "第六餐", "第七餐", "第八餐", "第九餐", "第十餐", "點心"]
+    
+    default_meal_name = meal_options[0]
+    for m in meal_options:
+        if m not in recorded_meals:
+            default_meal_name = m
+            break
+            
+    if 'meal_selector' not in st.session_state:
+        st.session_state.meal_selector = default_meal_name
 
-default_meal_name = meal_options[0]
-for m in meal_options:
-    if m not in recorded_meals:
-        default_meal_name = m
-        break
-
-if 'meal_selector' not in st.session_state:
-    st.session_state.meal_selector = default_meal_name
-
-with st.expander("🥣 餐別與碗重設定 (點擊收合)", expanded=st.session_state.meal_open):
+    # B-1. 餐別與碗重輸入
     c_meal, c_bowl = st.columns(2)
     with c_meal:
         def meal_formatter(m):
@@ -524,6 +520,7 @@ with st.expander("🥣 餐別與碗重設定 (點擊收合)", expanded=st.sessio
             on_change=reset_meal_inputs
         )
     
+    # 自動抓最後一次碗重
     last_bowl = 30.0
     df_meal = pd.DataFrame()
     
@@ -535,81 +532,63 @@ with st.expander("🥣 餐別與碗重設定 (點擊收合)", expanded=st.sessio
                 last_bowl = float(df_meal.iloc[-1]['Bowl_Weight'])
             except:
                 pass
-    
+
     with c_bowl:
         bowl_weight = st.number_input("🥣 碗重 (g)", value=last_bowl, step=0.1, format="%.1f")
 
+    # B-2. 本餐小計 (可收合)
+    meal_stats['name'] = meal_name
     if not df_meal.empty:
-        with st.expander(f"📜 查看 {meal_name} 已記錄明細"):
-            view_df = df_meal[['Item_Name', 'Net_Quantity', 'Cal_Sub', 'Time']].copy()
-            def append_time_to_finish(row):
-                if '完食' in str(row['Item_Name']):
-                    time_str = str(row['Time'])[:5]
-                    return f"{row['Item_Name']} {time_str}"
-                return row['Item_Name']
-            view_df['Item_Name'] = view_df.apply(append_time_to_finish, axis=1)
-            view_df = view_df.drop(columns=['Time'])
-            view_df.columns = ['品名', '數量/重量', '熱量']
-            st.dataframe(view_df, use_container_width=True, hide_index=True)
-
-# --- 計算本餐數據並渲染 Dashboard ---
-meal_stats['name'] = meal_name
-if not df_meal.empty:
-    for col in ['Cal_Sub', 'Net_Quantity', 'Prot_Sub', 'Fat_Sub']:
-        df_meal[col] = pd.to_numeric(df_meal[col], errors='coerce').fillna(0)
+        # 計算本餐
+        for col in ['Cal_Sub', 'Net_Quantity', 'Prot_Sub', 'Fat_Sub']:
+            df_meal[col] = pd.to_numeric(df_meal[col], errors='coerce').fillna(0)
+        
+        df_meal_clean = clean_duplicate_finish_records(df_meal)
+        m_food, m_water = calculate_intake_breakdown(df_meal_clean)
+        meal_stats['food'] = m_food
+        meal_stats['water'] = m_water
+        meal_stats['cal'] = df_meal_clean['Cal_Sub'].sum()
+        meal_stats['prot'] = df_meal_clean['Prot_Sub'].sum()
+        meal_stats['fat'] = df_meal_clean['Fat_Sub'].sum()
     
-    df_meal_clean = clean_duplicate_finish_records(df_meal)
-    
-    m_food, m_water = calculate_intake_breakdown(df_meal_clean)
-    meal_stats['food'] = m_food
-    meal_stats['water'] = m_water
-    meal_stats['cal'] = df_meal_clean['Cal_Sub'].sum()
-    meal_stats['prot'] = df_meal_clean['Prot_Sub'].sum()
-    meal_stats['fat'] = df_meal_clean['Fat_Sub'].sum()
+    with st.expander(f"📊 {meal_name} 營養小計", expanded=st.session_state.meal_stats_open):
+        st.markdown(render_meal_stats(meal_stats), unsafe_allow_html=True)
 
-# [修正] 補上缺少的參數
-formatted_date_str = record_date.strftime("%Y年 %m月 %d日")
-html_content = render_react_style_dashboard(day_stats, meal_stats, supp_list, med_list, formatted_date_str)
-dashboard_ph.markdown(html_content, unsafe_allow_html=True)
+    st.divider()
 
-# ==========================================
-#      主畫面區塊 3：操作區
-# ==========================================
+    # B-3. 切換新增/完食
+    nav_mode = st.radio(
+        "操作模式", 
+        ["➕ 新增食物/藥品", "🏁 完食/紀錄剩餘"], 
+        horizontal=True,
+        label_visibility="collapsed",
+        key="nav_mode"
+    )
 
-if 'cart' not in st.session_state:
-    st.session_state.cart = []
+    if 'cart' not in st.session_state: st.session_state.cart = []
 
-last_reading_db = bowl_weight
-last_item_db = "碗"
-if not df_meal.empty:
-    try:
-        df_food_only = df_meal[~df_meal['ItemID'].isin(['WASTE', 'FINISH'])]
-        if not df_food_only.empty:
-            last_reading_db = float(df_food_only.iloc[-1]['Scale_Reading'])
-            last_item_db = df_food_only.iloc[-1]['Item_Name']
-    except:
-        pass
+    # 計算上一筆參考
+    last_reading_db = bowl_weight
+    last_item_db = "碗"
+    if not df_meal.empty:
+        try:
+            df_food_only = df_meal[~df_meal['ItemID'].isin(['WASTE', 'FINISH'])]
+            if not df_food_only.empty:
+                last_reading_db = float(df_food_only.iloc[-1]['Scale_Reading'])
+                last_item_db = df_food_only.iloc[-1]['Item_Name']
+        except:
+            pass
 
-if len(st.session_state.cart) > 0:
-    last_ref_weight = st.session_state.cart[-1]['Scale_Reading']
-    last_ref_name = st.session_state.cart[-1]['Item_Name']
-else:
-    last_ref_weight = last_reading_db
-    last_ref_name = last_item_db
+    if len(st.session_state.cart) > 0:
+        last_ref_weight = st.session_state.cart[-1]['Scale_Reading']
+        last_ref_name = st.session_state.cart[-1]['Item_Name']
+    else:
+        last_ref_weight = last_reading_db
+        last_ref_name = last_item_db
 
-nav_mode = st.radio(
-    "操作模式", 
-    ["➕ 新增食物/藥品", "🏁 完食/紀錄剩餘"], 
-    horizontal=True,
-    label_visibility="collapsed",
-    key="nav_mode"
-)
-
-# --- 模式 1: 新增 ---
-if nav_mode == "➕ 新增食物/藥品":
-    st.markdown(f"##### 🍽️ 編輯：{meal_name}")
-    
-    with st.container(border=True):
+    # --- 模式 A: 新增 ---
+    if nav_mode == "➕ 新增食物/藥品":
+        # 輸入區
         c1, c2 = st.columns(2)
         with c1:
             unique_cats = ["請選擇..."] + list(df_items['Category'].unique())
@@ -642,7 +621,6 @@ if nav_mode == "➕ 新增食物/藥品":
         with c4:
             net_weight_disp = 0.0
             calc_msg_disp = "請輸入"
-            
             scale_val = safe_float(scale_reading_ui)
             
             if scale_val > 0:
@@ -678,138 +656,132 @@ if nav_mode == "➕ 新增食物/藥品":
                   on_click=add_to_cart_callback,
                   args=(bowl_weight, last_ref_weight, last_ref_name)
         )
-
-    if st.session_state.cart:
-        st.write("##### 🛒 待存清單 (可編輯)")
-        df_cart = pd.DataFrame(st.session_state.cart)
         
-        edited_df = st.data_editor(
-            df_cart,
-            use_container_width=True,
-            column_config={
-                "Item_Name": "品名",
-                "Net_Quantity": st.column_config.NumberColumn("數量/淨重", format="%.1f"),
-                "Cal_Sub": st.column_config.NumberColumn("熱量", format="%.1f")
-            },
-            column_order=["Item_Name", "Net_Quantity", "Cal_Sub"],
-            num_rows="dynamic",
-            key="cart_editor"
+        # 清單顯示
+        if st.session_state.cart:
+            st.markdown("---")
+            st.markdown("##### 🛒 待存清單 (可編輯)")
+            df_cart = pd.DataFrame(st.session_state.cart)
+            
+            edited_df = st.data_editor(
+                df_cart,
+                use_container_width=True,
+                column_config={
+                    "Item_Name": "品名",
+                    "Net_Quantity": st.column_config.NumberColumn("數量/淨重", format="%.1f"),
+                    "Cal_Sub": st.column_config.NumberColumn("熱量", format="%.1f")
+                },
+                column_order=["Item_Name", "Net_Quantity", "Cal_Sub"],
+                num_rows="dynamic",
+                key="cart_editor"
+            )
+            
+            if not edited_df.empty:
+                try:
+                    edited_df['Net_Quantity'] = pd.to_numeric(edited_df['Net_Quantity'], errors='coerce').fillna(0)
+                    edited_df['Cal_Sub'] = pd.to_numeric(edited_df['Cal_Sub'], errors='coerce').fillna(0)
+                    mask_total = ~edited_df['Category'].isin(['藥品', '保養品'])
+                    live_sum_net = edited_df[mask_total]['Net_Quantity'].sum()
+                    live_sum_cal = edited_df['Cal_Sub'].sum()
+                    st.info(f"∑ 總計 (不含藥)：{live_sum_net:.1f} g  |  🔥 {live_sum_cal:.1f} kcal")
+                except:
+                    pass
+
+            if st.button("💾 儲存寫入 Google Sheet", type="primary", use_container_width=True):
+                with st.spinner("寫入中..."):
+                    rows = []
+                    str_date = record_date.strftime("%Y/%m/%d")
+                    str_time = f"{record_time_str}:00"
+                    timestamp = f"{str_date} {str_time}"
+
+                    for i, row_data in edited_df.iterrows():
+                        orig_item = next((x for x in st.session_state.cart if x['Item_Name'] == row_data['Item_Name']), {})
+                        row = [
+                            str(uuid.uuid4()), timestamp, str_date, str_time, meal_name,
+                            orig_item.get('ItemID', ''), orig_item.get('Category', ''), 
+                            orig_item.get('Scale_Reading', 0), orig_item.get('Bowl_Weight', 0), 
+                            row_data['Net_Quantity'], row_data['Cal_Sub'],
+                            orig_item.get('Prot_Sub', 0), orig_item.get('Fat_Sub', 0), 
+                            orig_item.get('Phos_Sub', 0), "", row_data['Item_Name'], ""
+                        ]
+                        rows.append(row)
+                    
+                    try:
+                        sheet_log.append_rows(rows)
+                        st.toast("✅ 寫入成功！")
+                        st.session_state.cart = []
+                        next_index = 0
+                        if meal_name in meal_options:
+                            curr_idx = meal_options.index(meal_name)
+                            if curr_idx < len(meal_options) - 1:
+                                next_index = curr_idx + 1
+                            else:
+                                next_index = curr_idx
+                        st.session_state.pending_meal = meal_options[next_index]
+                        load_data.clear()
+                        st.session_state.just_saved = True
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"寫入失敗：{e}")
+
+    # --- 模式 2: 完食 ---
+    elif nav_mode == "🏁 完食/紀錄剩餘":
+        st.caption("紀錄完食時間，若有剩餘，請將剩食倒入新容器(或原碗)秤重")
+        
+        finish_date = st.date_input("完食日期", value=record_date, key="finish_date_picker")
+        str_finish_date = finish_date.strftime("%Y/%m/%d")
+        
+        default_now = get_tw_time().strftime("%H%M")
+        raw_finish_time = st.text_input("完食時間 (如 1806)", value=default_now, key="finish_time_input")
+        fmt_finish_time = format_time_str(raw_finish_time)
+        
+        st.caption(f"📝 將記錄為：{str_finish_date} **{fmt_finish_time}**")
+
+        finish_type = st.radio(
+            "狀態", 
+            ["全部吃光 (盤光光)", "有剩餘 (需秤重)"], 
+            horizontal=True,
+            key="finish_radio"
         )
         
-        if not edited_df.empty:
-            try:
-                edited_df['Net_Quantity'] = pd.to_numeric(edited_df['Net_Quantity'], errors='coerce').fillna(0)
-                edited_df['Cal_Sub'] = pd.to_numeric(edited_df['Cal_Sub'], errors='coerce').fillna(0)
-                
-                mask_total = ~edited_df['Category'].isin(['藥品', '保養品'])
-                live_sum_net = edited_df[mask_total]['Net_Quantity'].sum()
-                live_sum_cal = edited_df['Cal_Sub'].sum()
-                
-                st.info(f"∑ 總計 (不含藥)：{live_sum_net:.1f} g  |  🔥 {live_sum_cal:.1f} kcal")
-            except:
-                st.caption("計算中...")
-
-        if st.button("💾 儲存寫入 Google Sheet", type="primary", use_container_width=True):
-            with st.spinner("寫入中..."):
-                rows = []
-                str_date = record_date.strftime("%Y/%m/%d")
-                str_time = f"{record_time_str}:00"
-                timestamp = f"{str_date} {str_time}"
-
-                for i, row_data in edited_df.iterrows():
-                    orig_item = next((x for x in st.session_state.cart if x['Item_Name'] == row_data['Item_Name']), {})
-                    row = [
-                        str(uuid.uuid4()), timestamp, str_date, str_time, meal_name,
-                        orig_item.get('ItemID', ''), orig_item.get('Category', ''), 
-                        orig_item.get('Scale_Reading', 0), orig_item.get('Bowl_Weight', 0), 
-                        row_data['Net_Quantity'], row_data['Cal_Sub'],
-                        orig_item.get('Prot_Sub', 0), orig_item.get('Fat_Sub', 0), 
-                        orig_item.get('Phos_Sub', 0), "", row_data['Item_Name'], ""
-                    ]
-                    rows.append(row)
-                
-                try:
-                    sheet_log.append_rows(rows)
-                    st.toast("✅ 寫入成功！")
-                    st.session_state.cart = []
-                    
-                    next_index = 0
-                    if meal_name in meal_options:
-                        curr_idx = meal_options.index(meal_name)
-                        if curr_idx < len(meal_options) - 1:
-                            next_index = curr_idx + 1
-                        else:
-                            next_index = curr_idx
-                    st.session_state.meal_selector = meal_options[next_index]
-                    
-                    load_data.clear()
-                    st.session_state.just_saved = True
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"寫入失敗：{e}")
-
-# --- 模式 2: 完食 ---
-elif nav_mode == "🏁 完食/紀錄剩餘":
-    st.markdown(f"##### 🍽️ 編輯：{meal_name}")
-    st.caption("紀錄完食時間，若有剩餘，請將剩食倒入新容器(或原碗)秤重")
-    
-    finish_date = st.date_input("完食日期", value=record_date, key="finish_date_picker")
-    str_finish_date = finish_date.strftime("%Y/%m/%d")
-    
-    default_now = get_tw_time().strftime("%H%M")
-    raw_finish_time = st.text_input("完食時間 (如 1806)", value=default_now, key="finish_time_input")
-    fmt_finish_time = format_time_str(raw_finish_time)
-    
-    st.caption(f"📝 將記錄為：{str_finish_date} **{fmt_finish_time}**")
-
-    finish_type = st.radio(
-        "狀態", 
-        ["全部吃光 (盤光光)", "有剩餘 (需秤重)"], 
-        horizontal=True,
-        key="finish_radio"
-    )
-    
-    waste_net = 0.0
-    waste_cal = 0.0
-    
-    if finish_type == "有剩餘 (需秤重)":
-        st.markdown("---")
-        st.caption("請輸入「倒掉時」的秤重數據：")
+        waste_net = 0.0
+        waste_cal = 0.0
         
-        c_w1, c_w2 = st.columns(2)
-        with c_w1:
-            waste_gross = st.number_input("1. 容器+剩食 總重 (g)", min_value=0.0, step=0.1, key="waste_gross", value=None, placeholder="輸入總重")
-        with c_w2:
-            waste_tare = st.number_input("2. 容器空重 (g)", min_value=0.0, step=0.1, key="waste_tare", value=None, placeholder="輸入空重")
-        
-        val_gross = safe_float(waste_gross)
-        val_tare = safe_float(waste_tare)
-        waste_net = val_gross - val_tare
-        
-        if waste_gross is not None and waste_tare is not None:
-            if waste_net > 0:
-                st.warning(f"📉 實際剩餘淨重：{waste_net:.1f} g")
-                if not df_meal.empty:
-                    df_meal_clean = clean_duplicate_finish_records(df_meal)
-                    meal_foods = df_meal_clean[df_meal_clean['Net_Quantity'].apply(lambda x: safe_float(x)) > 0]
-                    
-                    exclude_meds = ['藥品', '保養品']
-                    if 'Category' in meal_foods.columns:
-                        meal_foods['Category'] = meal_foods['Category'].astype(str).str.strip()
-                        calc_df = meal_foods[~meal_foods['Category'].isin(exclude_meds)]
-                        
-                        total_in_cal = calc_df['Cal_Sub'].apply(safe_float).sum()
-                        total_in_weight = calc_df['Net_Quantity'].apply(safe_float).sum()
-                        
-                        if total_in_weight > 0:
-                            avg_density = total_in_cal / total_in_weight
-                            waste_cal = waste_net * avg_density
-                            st.caption(f"預估扣除熱量：{waste_cal:.1f} kcal")
-            elif val_gross > 0 and waste_net <= 0:
-                st.error("空重不能大於總重！")
+        if finish_type == "有剩餘 (需秤重)":
+            st.markdown("---")
+            st.caption("請輸入「倒掉時」的秤重數據：")
+            
+            c_w1, c_w2 = st.columns(2)
+            with c_w1:
+                waste_gross = st.number_input("1. 容器+剩食 總重 (g)", min_value=0.0, step=0.1, key="waste_gross", value=None, placeholder="輸入總重")
+            with c_w2:
+                waste_tare = st.number_input("2. 容器空重 (g)", min_value=0.0, step=0.1, key="waste_tare", value=None, placeholder="輸入空重")
+            
+            val_gross = safe_float(waste_gross)
+            val_tare = safe_float(waste_tare)
+            waste_net = val_gross - val_tare
+            
+            if waste_gross is not None and waste_tare is not None:
+                if waste_net > 0:
+                    st.warning(f"📉 實際剩餘淨重：{waste_net:.1f} g")
+                    if not df_meal.empty:
+                        df_meal_clean = clean_duplicate_finish_records(df_meal)
+                        meal_foods = df_meal_clean[df_meal_clean['Net_Quantity'].apply(lambda x: safe_float(x)) > 0]
+                        exclude_meds = ['藥品', '保養品']
+                        if 'Category' in meal_foods.columns:
+                            meal_foods['Category'] = meal_foods['Category'].astype(str).str.strip()
+                            calc_df = meal_foods[~meal_foods['Category'].isin(exclude_meds)]
+                            total_in_cal = calc_df['Cal_Sub'].apply(safe_float).sum()
+                            total_in_weight = calc_df['Net_Quantity'].apply(safe_float).sum()
+                            if total_in_weight > 0:
+                                avg_density = total_in_cal / total_in_weight
+                                waste_cal = waste_net * avg_density
+                                st.caption(f"預估扣除熱量：{waste_cal:.1f} kcal")
+                elif val_gross > 0 and waste_net <= 0:
+                    st.error("空重不能大於總重！")
 
-    st.button("💾 記錄完食/剩餘", 
-              type="primary",
-              on_click=save_finish_callback,
-              args=(finish_type, waste_net, waste_cal, bowl_weight, meal_name, fmt_finish_time, finish_date)
-    )
+        st.button("💾 記錄完食/剩餘", 
+                  type="primary",
+                  on_click=save_finish_callback,
+                  args=(finish_type, waste_net, waste_cal, bowl_weight, meal_name, fmt_finish_time, finish_date)
+        )
