@@ -1,0 +1,669 @@
+import React, { useState, useEffect } from 'react';
+import { 
+  Flame, 
+  Utensils, 
+  Droplets, 
+  Dna, 
+  Beef, 
+  Pill, 
+  Leaf,
+  Activity,
+  CalendarDays,
+  Menu,
+  ChevronDown,
+  Plus,
+  Trash2,
+  Save,
+  Scale,
+  CheckCircle2,
+  RotateCcw,
+  Cat,
+  Minus,
+  XCircle,
+  ArrowDown,
+  ChevronRight,
+  Settings,
+  Clock,
+  Calendar,
+  ChevronsLeft,
+  RefreshCw
+} from 'lucide-react';
+
+// --- Color Palette Constants ---
+const THEME = {
+  navy: '#1F1641',      // Text, Dark Backgrounds
+  darkBlue: '#012172',  // Primary Buttons, Active States
+  blue: '#0486DB',      // Brand Color, Icons, Highlights
+  cyan: '#05ACD3',      // Accents, Water, Tags
+  beige: '#BBBF95',     // Neutral, Fat, Borders
+  bg: '#F8FAFC'         // App Background (Very light blue-grey)
+};
+
+// --- UI Components ---
+
+const Card = ({ children, className = "", title, icon: Icon, rightContent, style }) => (
+  <div className={`bg-white rounded-2xl shadow-sm border border-[#0486DB]/10 overflow-hidden ${className}`} style={style}>
+    {(title || Icon) && (
+      <div className="px-5 py-4 border-b border-[#0486DB]/10 flex items-center justify-between bg-white">
+        <div className="flex items-center gap-2.5">
+          {Icon && (
+            <div className="p-1.5 rounded-lg bg-[#0486DB]/10 text-[#0486DB]">
+              <Icon size={18} />
+            </div>
+          )}
+          <h3 className="font-bold text-[#1F1641] text-lg">{title}</h3>
+        </div>
+        {rightContent}
+      </div>
+    )}
+    <div className="p-0">
+      {children}
+    </div>
+  </div>
+);
+
+const StatItem = ({ icon: Icon, label, value, unit, color, centered = false }) => (
+  <div className={`flex flex-col ${centered ? 'items-center justify-center py-2 px-1' : 'p-2.5 justify-between'} rounded-xl border border-[#0486DB]/5 bg-white h-full hover:border-[#0486DB]/20 hover:shadow-md transition-all group`}>
+    {!centered && (
+      <div className="flex items-center gap-1.5 mb-1.5">
+        <div className={`p-1.5 rounded-lg transition-colors ${color.bg} ${color.text}`}>
+          <Icon size={14} />
+        </div>
+        <span className="text-[10px] font-bold text-[#1F1641]/60 group-hover:text-[#1F1641] transition-colors">{label}</span>
+      </div>
+    )}
+    {centered && (
+      <span className="text-[10px] font-bold text-[#1F1641]/40 mb-0.5 text-center leading-none">{label}</span>
+    )}
+    <div className={`flex items-baseline gap-0.5 ${centered ? 'justify-center' : ''}`}>
+      <span className={`text-base font-bold tracking-tight ${centered ? color.text : 'text-[#1F1641]'}`}>{value}</span>
+      <span className="text-[9px] text-[#1F1641]/40 font-medium">{unit}</span>
+    </div>
+  </div>
+);
+
+const Tag = ({ text, count, type }) => {
+  const styles = type === 'supplement' 
+    ? 'bg-[#05ACD3]/10 text-[#05ACD3] border-[#05ACD3]/20' 
+    : 'bg-[#1F1641]/5 text-[#1F1641] border-[#1F1641]/10';
+  return (
+    <span className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium border cursor-default ${styles}`}>
+      <span className="truncate">{text}</span>
+      {count > 0 && (
+        <span className="flex-shrink-0 bg-white/80 px-1.5 py-0.5 rounded text-[10px] font-bold min-w-[20px] text-center shadow-sm">
+          x{count}
+        </span>
+      )}
+    </span>
+  );
+};
+
+// --- Hamburger Menu Component (Based on uploaded image but styled with THEME) ---
+const SideMenu = ({ isOpen, onClose, currentDate, currentTime, setCurrentDate, setCurrentTime }) => {
+  return (
+    <>
+      {/* Backdrop */}
+      <div 
+        className={`fixed inset-0 bg-[#1F1641]/20 backdrop-blur-sm z-40 transition-opacity duration-300 ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+        onClick={onClose}
+      />
+      
+      {/* Drawer */}
+      <div className={`fixed top-0 left-0 h-full w-[85%] max-w-sm bg-white z-50 shadow-2xl transform transition-transform duration-300 ease-out ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        
+        {/* Header Area */}
+        <div className="p-6 flex items-center justify-between">
+           <div className="flex items-center gap-2 text-[#1F1641]">
+             <Settings size={24} className="animate-spin-slow" />
+             <h2 className="text-xl font-bold">設定</h2>
+           </div>
+           <button 
+             onClick={onClose}
+             className="p-2 text-[#1F1641]/40 hover:text-[#1F1641] hover:bg-[#1F1641]/5 rounded-full transition-colors"
+           >
+             <ChevronsLeft size={24} />
+           </button>
+        </div>
+
+        {/* Menu Content */}
+        <div className="px-6 space-y-8">
+          
+          {/* Date Section */}
+          <div className="space-y-2">
+            <label className="flex items-center gap-2 text-sm font-bold text-[#1F1641]/60">
+              <Calendar size={16} /> 日期
+            </label>
+            <input 
+              type="text" 
+              value={currentDate}
+              onChange={(e) => setCurrentDate(e.target.value)}
+              className="w-full p-4 rounded-xl bg-[#F8FAFC] border-2 border-transparent text-[#1F1641] font-bold text-lg focus:outline-none focus:border-[#0486DB]/30 focus:bg-white transition-all shadow-inner"
+            />
+          </div>
+
+          {/* Time Section */}
+          <div className="space-y-2">
+            <label className="flex items-center gap-2 text-sm font-bold text-[#1F1641]/60">
+              <Clock size={16} /> 時間 (如 0618)
+            </label>
+            <input 
+              type="text" 
+              value={currentTime}
+              onChange={(e) => setCurrentTime(e.target.value)}
+              className="w-full p-4 rounded-xl bg-[#F8FAFC] border-2 border-transparent text-[#1F1641] font-bold text-lg focus:outline-none focus:border-[#0486DB]/30 focus:bg-white transition-all shadow-inner"
+            />
+            <div className="px-1 space-y-1">
+              <p className="text-xs text-[#1F1641]/40 font-medium">
+                將記錄為：{currentTime.length === 4 ? `${currentTime.slice(0,2)}:${currentTime.slice(2)}` : currentTime}
+              </p>
+              <p className="text-xs text-[#1F1641]/30">
+                輸入數字後，點擊空白處即可生效
+              </p>
+            </div>
+          </div>
+
+          {/* Divider */}
+          <div className="h-px bg-[#1F1641]/5 w-full my-4"></div>
+
+          {/* Action Buttons */}
+          <button className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl border-2 border-[#1F1641]/10 text-[#1F1641]/70 font-bold hover:border-[#0486DB]/30 hover:text-[#0486DB] hover:bg-[#0486DB]/5 transition-all group active:scale-[0.98]">
+             <RefreshCw size={18} className="group-hover:rotate-180 transition-transform duration-500" />
+             重新整理數據
+          </button>
+
+        </div>
+      </div>
+    </>
+  );
+};
+
+export default function App() {
+  // --- State ---
+  const [isMenuOpen, setIsMenuOpen] = useState(false); // Menu State
+  const [isOverviewExpanded, setIsOverviewExpanded] = useState(true);
+  const [isCurrentMealStatsExpanded, setIsCurrentMealStatsExpanded] = useState(true);
+  
+  // Settings
+  const [bowlWeight, setBowlWeight] = useState(30.0);
+  const [mealType, setMealType] = useState('第四餐');
+  const [currentDate, setCurrentDate] = useState('2025/12/04'); // For Menu
+  const [currentTime, setCurrentTime] = useState('0845');     // For Menu
+
+  // Input Form State
+  const [activeTab, setActiveTab] = useState('add');
+  const [category, setCategory] = useState('主食');
+  const [itemName, setItemName] = useState('主1-1 鱸魚');
+  const [scaleReading, setScaleReading] = useState('');
+  const [isTare, setIsTare] = useState(false);
+  
+  // Finish Form State
+  const [finishStatus, setFinishStatus] = useState('all_eaten'); 
+  const [leftoverTotal, setLeftoverTotal] = useState('');
+  const [leftoverContainer, setLeftoverContainer] = useState('');
+
+  // Calculations
+  const prevWeight = bowlWeight; 
+  const currentNetWeight = scaleReading 
+    ? (isTare ? parseFloat(scaleReading) : parseFloat(scaleReading) - prevWeight) 
+    : 0;
+  const isNegative = currentNetWeight < 0;
+  const displayNetWeight = isNegative ? '---' : currentNetWeight.toFixed(1);
+
+  // --- Mock Data ---
+  const dailyStats = {
+    calories: { value: 177, unit: 'kcal' },
+    food: { value: 176.4, unit: 'g' },
+    water: { value: 99.6, unit: 'ml' },
+    protein: { value: 24.3, unit: 'g' },
+    fat: { value: 6.9, unit: 'g' },
+  };
+
+  const currentMealStats = {
+    calories: { value: 56, unit: 'kcal' },
+    food: { value: 45.2, unit: 'g' },
+    water: { value: 16.4, unit: 'ml' },
+    protein: { value: 6.0, unit: 'g' },
+    fat: { value: 2.1, unit: 'g' },
+  };
+
+  const supplements = [
+    { name: "Wagamodo", count: 1 },
+    { name: "安適得", count: 2 },
+    { name: "蔓越莓", count: 1 },
+  ];
+  const meds = [
+    { name: "中藥", count: 2 },
+    { name: "活性碳", count: 1 },
+  ];
+
+  const pendingList = [
+    { id: 1, name: "主1-1 鱸魚", weight: 3.0, cals: 3.6 },
+  ];
+
+  const colors = {
+    calories: { bg: 'bg-[#1F1641]/10', text: 'text-[#1F1641]' },
+    food: { bg: 'bg-[#0486DB]/10', text: 'text-[#0486DB]' },
+    water: { bg: 'bg-[#05ACD3]/10', text: 'text-[#05ACD3]' },
+    protein: { bg: 'bg-[#012172]/10', text: 'text-[#012172]' },
+    fat: { bg: 'bg-[#BBBF95]/20', text: 'text-[#9AA065]' },
+  };
+
+  return (
+    <div className="min-h-screen font-sans pb-24 md:pb-8 text-[#1F1641] overflow-x-hidden" style={{ backgroundColor: THEME.bg }}>
+      
+      {/* Side Menu Injection */}
+      <SideMenu 
+        isOpen={isMenuOpen} 
+        onClose={() => setIsMenuOpen(false)}
+        currentDate={currentDate}
+        currentTime={currentTime}
+        setCurrentDate={setCurrentDate}
+        setCurrentTime={setCurrentTime}
+      />
+
+      {/* Header */}
+      <div className="bg-white px-4 md:px-8 py-3 shadow-sm border-b border-[#0486DB]/10 sticky top-0 z-20">
+        <div className="max-w-3xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            {/* Hamburger Button */}
+            <button 
+              onClick={() => setIsMenuOpen(true)}
+              className="p-2 -ml-2 text-[#1F1641]/60 hover:text-[#0486DB] hover:bg-[#0486DB]/5 rounded-lg transition-colors"
+            >
+              <Menu size={24} />
+            </button>
+            
+            <div className="w-10 h-10 rounded-full flex items-center justify-center border-2 border-white shadow-sm" style={{ backgroundColor: `${THEME.blue}15`, color: THEME.blue }}>
+              <Cat size={20} />
+            </div>
+            <div>
+              <h1 className="text-sm font-bold text-[#1F1641] md:text-base">咪咪的飲食日記</h1>
+              <p className="text-[10px] text-[#1F1641]/60 flex items-center gap-1 md:text-xs">
+                <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: THEME.cyan }}></span>
+                今日狀況良好
+              </p>
+            </div>
+          </div>
+          {/* Right side icons removed as Menu is now on left, kept simple */}
+        </div>
+      </div>
+
+      <div className="w-full max-w-md md:max-w-3xl mx-auto p-4 space-y-6 md:p-8">
+        
+        {/* BLOCK 1: 本日健康總覽 */}
+        <Card>
+           <button 
+            onClick={() => setIsOverviewExpanded(!isOverviewExpanded)}
+            className="w-full flex items-center justify-between p-4 md:p-5 hover:bg-[#0486DB]/5 transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-lg" style={{ backgroundColor: `${THEME.beige}30`, color: '#8A9150' }}>
+                <Activity size={18} />
+              </div>
+              <h3 className="font-bold text-[#1F1641] text-lg">本日健康總覽</h3>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-[10px] font-bold px-2 py-1 rounded-full md:text-xs" style={{ backgroundColor: `${THEME.blue}10`, color: THEME.blue }}>
+                {currentDate}
+              </span>
+              <ChevronDown size={20} className={`text-[#1F1641]/40 transition-transform ${isOverviewExpanded ? 'rotate-180' : ''}`} />
+            </div>
+          </button>
+
+          {isOverviewExpanded && (
+            <div className="p-4 md:p-5 pt-0 border-t border-[#0486DB]/10 bg-white">
+              <div className="mb-6 pt-4">
+                <h4 className="text-xs font-bold text-[#1F1641]/40 uppercase tracking-wider mb-3 pl-1">今日營養攝取</h4>
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-2.5 md:gap-4">
+                   <div className="col-span-2 md:col-span-3 grid grid-cols-3 gap-2.5 md:gap-4">
+                     <StatItem icon={Flame} label="熱量" value={dailyStats.calories.value} unit={dailyStats.calories.unit} color={colors.calories} />
+                     <StatItem icon={Utensils} label="食物" value={dailyStats.food.value} unit={dailyStats.food.unit} color={colors.food} />
+                     <StatItem icon={Droplets} label="飲水" value={dailyStats.water.value} unit={dailyStats.water.unit} color={colors.water} />
+                  </div>
+                  <div className="col-span-2 md:col-span-2 grid grid-cols-2 gap-2.5 md:gap-4">
+                    <StatItem icon={Beef} label="蛋白質" value={dailyStats.protein.value} unit={dailyStats.protein.unit} color={colors.protein} />
+                    <StatItem icon={Dna} label="脂肪" value={dailyStats.fat.value} unit={dailyStats.fat.unit} color={colors.fat} />
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <h4 className="text-xs font-bold text-[#1F1641]/40 uppercase tracking-wider mb-3 pl-1">保養與藥品紀錄</h4>
+                <div className="rounded-xl p-4 border border-[#0486DB]/10 grid grid-cols-1 md:grid-cols-2 gap-6" style={{ backgroundColor: `${THEME.blue}05` }}>
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Leaf size={14} style={{ color: THEME.cyan }} />
+                      <span className="text-xs font-medium" style={{ color: THEME.cyan }}>保養品</span>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {supplements.map((item, idx) => <Tag key={idx} text={item.name} count={item.count} type="supplement" />)}
+                    </div>
+                  </div>
+                  <div className="md:border-l md:border-[#0486DB]/10 md:pl-6 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Pill size={14} style={{ color: THEME.navy }} />
+                      <span className="text-xs font-medium" style={{ color: THEME.navy }}>藥品</span>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {meds.map((item, idx) => <Tag key={idx} text={item.name} count={item.count} type="medicine" />)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </Card>
+
+        {/* BLOCK 2: 新增飲食紀錄 */}
+        <Card 
+          title="新增飲食紀錄" 
+          icon={Utensils} 
+          className="shadow-md"
+          style={{ borderTop: `4px solid ${THEME.blue}` }}
+        >
+          <div className="p-4 md:p-6 pb-0 space-y-6">
+            
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-[#1F1641]/60 flex items-center gap-1.5">
+                    <Scale size={14} /> 碗重 (g)
+                  </label>
+                  <input 
+                    type="number" 
+                    value={bowlWeight}
+                    onChange={(e) => setBowlWeight(Number(e.target.value))}
+                    className="w-full p-2.5 bg-white border border-[#1F1641]/10 rounded-lg text-[#1F1641] font-bold focus:outline-none focus:ring-2 focus:ring-[#0486DB]/30 transition-shadow" 
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-[#1F1641]/60 flex items-center gap-1.5">
+                    <Utensils size={14} /> 餐別
+                  </label>
+                  <div className="relative">
+                    <select 
+                      value={mealType}
+                      onChange={(e) => setMealType(e.target.value)}
+                      className="w-full p-2.5 bg-white border border-[#1F1641]/10 rounded-lg text-[#1F1641] font-bold appearance-none focus:outline-none focus:ring-2 focus:ring-[#0486DB]/30 transition-shadow"
+                    >
+                      <option>第四餐</option>
+                      <option>第一餐</option>
+                      <option>第二餐</option>
+                      <option>第三餐</option>
+                    </select>
+                    <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 text-[#1F1641]/40 pointer-events-none" size={16} />
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-[#0486DB]/10 overflow-hidden" style={{ backgroundColor: `${THEME.blue}08` }}>
+                 <button 
+                    onClick={() => setIsCurrentMealStatsExpanded(!isCurrentMealStatsExpanded)}
+                    className="w-full flex items-center justify-between p-3 px-4 hover:bg-[#0486DB]/10 transition-colors"
+                 >
+                   <span className="text-xs font-bold flex items-center gap-2" style={{ color: THEME.blue }}>
+                     <Activity size={14} /> 本餐營養小計
+                   </span>
+                   <ChevronDown size={16} className={`transition-transform duration-300 ${isCurrentMealStatsExpanded ? 'rotate-180' : ''}`} style={{ color: THEME.blue }} />
+                 </button>
+                 
+                 {isCurrentMealStatsExpanded && (
+                   <div className="px-4 pb-4 animate-in fade-in slide-in-from-top-1">
+                      <div className="grid grid-cols-5 gap-1.5 pt-2 border-t border-[#0486DB]/10">
+                        <StatItem centered icon={Flame} label="熱量" value={currentMealStats.calories.value} unit={currentMealStats.calories.unit} color={colors.calories} />
+                        <StatItem centered icon={Utensils} label="食物" value={currentMealStats.food.value} unit={currentMealStats.food.unit} color={colors.food} />
+                        <StatItem centered icon={Droplets} label="飲水" value={currentMealStats.water.value} unit={currentMealStats.water.unit} color={colors.water} />
+                        <StatItem centered icon={Beef} label="蛋白質" value={currentMealStats.protein.value} unit={currentMealStats.protein.unit} color={colors.protein} />
+                        <StatItem centered icon={Dna} label="脂肪" value={currentMealStats.fat.value} unit={currentMealStats.fat.unit} color={colors.fat} />
+                      </div>
+                   </div>
+                 )}
+              </div>
+            </div>
+
+            <div className="border-t border-[#1F1641]/10 my-4"></div>
+
+            {/* 操作區塊 */}
+            <div className="flex items-center gap-6 mb-2">
+              <button 
+                onClick={() => setActiveTab('add')}
+                className={`flex items-center gap-2 text-sm md:text-base font-bold transition-colors ${activeTab === 'add' ? 'text-[#1F1641]' : 'text-[#1F1641]/40'}`}
+              >
+                <div className={`w-3.5 h-3.5 rounded-full border-[3px] transition-colors`} style={{ backgroundColor: activeTab === 'add' ? 'white' : 'transparent', borderColor: activeTab === 'add' ? THEME.blue : '#1F164133' }}></div>
+                <span>新增食物/藥品</span>
+              </button>
+              <button 
+                onClick={() => setActiveTab('finish')}
+                className={`flex items-center gap-2 text-sm md:text-base font-bold transition-colors ${activeTab === 'finish' ? 'text-[#1F1641]' : 'text-[#1F1641]/40'}`}
+              >
+                <div className={`w-3.5 h-3.5 rounded-full border-[3px] transition-colors`} style={{ backgroundColor: activeTab === 'finish' ? 'white' : 'transparent', borderColor: activeTab === 'finish' ? THEME.blue : '#1F164133' }}></div>
+                <span>完食/紀錄剩餘</span>
+              </button>
+            </div>
+
+            <div className="border rounded-lg p-2.5 flex items-center gap-2 font-bold text-sm" style={{ backgroundColor: `${THEME.blue}15`, borderColor: `${THEME.blue}30`, color: THEME.blue }}>
+              <Utensils size={16} />
+              目前編輯：{mealType}
+            </div>
+
+            <div className="py-2">
+              {activeTab === 'add' && (
+                <div className="space-y-5 animate-in fade-in slide-in-from-right-4 duration-300">
+                  <div className="p-4 border border-[#0486DB]/10 rounded-xl bg-white shadow-sm space-y-4">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-[#1F1641]/60">類別</label>
+                      <div className="relative">
+                        <select 
+                          value={category}
+                          onChange={(e) => setCategory(e.target.value)}
+                          className="w-full p-2.5 bg-[#F4F7F9] border-none rounded-lg text-[#1F1641] font-bold appearance-none outline-none focus:ring-2 focus:ring-[#0486DB]/30"
+                        >
+                          <option>主食</option>
+                          <option>副食</option>
+                          <option>藥品</option>
+                        </select>
+                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-[#1F1641]/40 pointer-events-none" size={16} />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-[#1F1641]/60">品名</label>
+                      <div className="relative">
+                         <select 
+                          value={itemName}
+                          onChange={(e) => setItemName(e.target.value)}
+                          className="w-full p-2.5 bg-[#F4F7F9] border-none rounded-lg text-[#1F1641] font-bold appearance-none outline-none focus:ring-2 focus:ring-[#0486DB]/30"
+                        >
+                          <option>主1-1 鱸魚</option>
+                          <option>主1-2 雞肉</option>
+                        </select>
+                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-[#1F1641]/40 pointer-events-none" size={16} />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-[#1F1641]/60">秤重讀數 (g)</label>
+                      <div className="flex gap-2">
+                         <div className="relative flex-1">
+                           <input 
+                            type="number" 
+                            placeholder="輸入重量"
+                            value={scaleReading}
+                            onChange={(e) => setScaleReading(e.target.value)}
+                            className="w-full p-2.5 bg-[#F4F7F9] border-none rounded-lg text-[#1F1641] font-bold outline-none focus:ring-2 focus:ring-[#0486DB]/30 placeholder:text-[#1F1641]/30"
+                          />
+                           {scaleReading && (
+                             <button onClick={() => setScaleReading('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#1F1641]/40">
+                               <XCircle size={16} />
+                             </button>
+                           )}
+                         </div>
+                         <button className="w-10 bg-[#F4F7F9] rounded-lg flex items-center justify-center text-[#1F1641]/60 hover:bg-[#1F1641]/10 font-bold"><Minus size={16}/></button>
+                         <button className="w-10 bg-[#F4F7F9] rounded-lg flex items-center justify-center text-[#1F1641]/60 hover:bg-[#1F1641]/10 font-bold"><Plus size={16}/></button>
+                      </div>
+                      <p className="text-xs text-[#1F1641]/40 pl-1">
+                        前筆: {bowlWeight.toFixed(1)} g (碗)
+                      </p>
+                    </div>
+
+                    <div className="space-y-3 pt-1">
+                       <label className="flex items-center gap-2 cursor-pointer select-none">
+                         <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors`} style={{ backgroundColor: isTare ? THEME.blue : 'white', borderColor: isTare ? THEME.blue : '#1F164133' }} onClick={() => setIsTare(!isTare)}>
+                           {isTare && <CheckCircle2 size={16} className="text-white" />}
+                         </div>
+                         <span className="text-sm text-[#1F1641] font-bold flex items-center gap-1">
+                           <Scale size={16} /> 已歸零 / 單獨秤重
+                         </span>
+                       </label>
+
+                       <div className="space-y-1">
+                         <p className="text-xs font-bold text-[#1F1641]/60">淨重</p>
+                         <div className="flex items-center gap-3">
+                           <p className="text-4xl font-bold text-[#1F1641] font-mono tracking-tight">
+                             {displayNetWeight}
+                           </p>
+                           {isNegative ? (
+                              <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-700 px-2 py-1 rounded text-[10px] font-bold">
+                                <ArrowDown size={12} /> 數值異常
+                              </span>
+                           ) : (
+                             <span className="inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-bold" style={{ backgroundColor: `${THEME.beige}40`, color: '#6A7045' }}>
+                               <ArrowDown size={12} /> {isTare ? '單獨秤重' : `扣除前筆 ${prevWeight.toFixed(1)}`}
+                             </span>
+                           )}
+                         </div>
+                       </div>
+                    </div>
+
+                    <button className="w-full py-3 bg-white border border-[#0486DB]/30 rounded-lg text-[#0486DB] font-bold hover:bg-[#0486DB]/5 transition-all flex items-center justify-center gap-2 shadow-sm active:scale-[0.99]">
+                       <ArrowDown size={18} className="text-white rounded p-0.5" style={{ backgroundColor: THEME.blue }} /> 加入清單
+                    </button>
+                  </div>
+
+                  <div className="space-y-2">
+                    <h3 className="text-base font-bold text-[#1F1641] flex items-center gap-2">
+                      🛒 待存清單 (可編輯)
+                    </h3>
+                    <div className="bg-white border border-[#0486DB]/10 rounded-xl overflow-hidden shadow-sm">
+                      <table className="w-full text-left text-sm">
+                        <thead>
+                           <tr className="border-b border-[#0486DB]/10 text-[#1F1641]/60" style={{ backgroundColor: `${THEME.blue}08` }}>
+                             <th className="p-3 font-normal pl-4">品名</th>
+                             <th className="p-3 font-normal">數量/淨重</th>
+                             <th className="p-3 font-normal text-right pr-4">熱量</th>
+                           </tr>
+                        </thead>
+                        <tbody className="divide-y divide-[#0486DB]/5">
+                           {pendingList.map(item => (
+                             <tr key={item.id}>
+                               <td className="p-3 pl-4 font-bold text-[#1F1641]">{item.name}</td>
+                               <td className="p-3 font-mono text-[#1F1641]/80">{item.weight.toFixed(1)}</td>
+                               <td className="p-3 pr-4 font-mono text-[#1F1641]/80 text-right">{item.cals}</td>
+                             </tr>
+                           ))}
+                            <tr style={{ backgroundColor: `${THEME.blue}03` }}>
+                              <td colSpan="3" className="h-16 text-center text-[#1F1641]/30 text-xs">
+                                暫無更多項目
+                              </td>
+                            </tr>
+                        </tbody>
+                      </table>
+                      <div className="p-3 flex justify-between items-center border-t border-[#0486DB]/10 text-sm" style={{ backgroundColor: `${THEME.blue}15`, color: THEME.navy }}>
+                         <div>
+                           ∑ 總計 (不含藥) : <span className="font-bold">3.0 g</span> <span className="text-[#0486DB]/50 mx-1">|</span> 🔥 <span className="font-bold">3.6 kcal</span>
+                         </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'finish' && (
+                <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300 p-4 border border-[#0486DB]/10 rounded-xl bg-white shadow-sm">
+                  <p className="text-xs text-[#1F1641]/60 leading-relaxed">
+                    紀錄完食時間，若有剩餘，請將剩食倒入新容器(或原碗)秤重
+                  </p>
+
+                  <div className="space-y-4">
+                    <div className="space-y-1">
+                       <label className="text-xs font-bold text-[#1F1641]/60">完食日期</label>
+                       <div className="bg-[#F4F7F9] p-3 rounded-lg text-[#1F1641] font-bold text-sm">
+                         {currentDate}
+                       </div>
+                    </div>
+                    <div className="space-y-1">
+                       <label className="text-xs font-bold text-[#1F1641]/60">完食時間 (如 1806)</label>
+                       <div className="bg-[#F4F7F9] p-3 rounded-lg text-[#1F1641] font-bold text-sm">
+                         {currentTime}
+                       </div>
+                       <p className="text-[10px] text-[#1F1641]/40 flex items-center gap-1 mt-1">
+                         📝 將記錄為：{currentDate} {currentTime.length === 4 ? `${currentTime.slice(0,2)}:${currentTime.slice(2)}` : currentTime}
+                       </p>
+                    </div>
+
+                    <div className="space-y-2 pt-2">
+                      <label className="text-xs font-bold text-[#1F1641]/60">狀態</label>
+                      <div className="flex items-center gap-6">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <div className={`w-5 h-5 rounded-full border flex items-center justify-center`} style={{ borderColor: finishStatus === 'all_eaten' ? THEME.darkBlue : '#1F164133' }}>
+                             {finishStatus === 'all_eaten' && <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: THEME.darkBlue }}></div>}
+                          </div>
+                          <input type="radio" className="hidden" checked={finishStatus === 'all_eaten'} onChange={() => setFinishStatus('all_eaten')} />
+                          <span className={`text-sm font-bold ${finishStatus === 'all_eaten' ? 'text-[#1F1641]' : 'text-[#1F1641]/50'}`}>全部吃光 (盤光光)</span>
+                        </label>
+                        
+                        <label className="flex items-center gap-2 cursor-pointer">
+                           <div className={`w-5 h-5 rounded-full border flex items-center justify-center`} style={{ borderColor: finishStatus === 'leftover' ? THEME.darkBlue : '#1F164133' }}>
+                             {finishStatus === 'leftover' && <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: THEME.darkBlue }}></div>}
+                          </div>
+                          <input type="radio" className="hidden" checked={finishStatus === 'leftover'} onChange={() => setFinishStatus('leftover')} />
+                          <span className={`text-sm font-bold ${finishStatus === 'leftover' ? 'text-[#1F1641]' : 'text-[#1F1641]/50'}`}>有剩餘 (需秤重)</span>
+                        </label>
+                      </div>
+                    </div>
+
+                    {finishStatus === 'leftover' && (
+                      <div className="pt-4 border-t border-[#1F1641]/10 space-y-4 animate-in fade-in slide-in-from-top-2">
+                         <p className="text-xs text-[#1F1641]/60">請輸入「倒掉時」的秤重數據：</p>
+                         
+                         <div className="space-y-1">
+                            <label className="text-xs font-bold text-[#1F1641]/60">容器+剩食 總重 (g)</label>
+                            <div className="flex gap-2">
+                              <input type="number" placeholder="輸入總重" value={leftoverTotal} onChange={e=>setLeftoverTotal(e.target.value)} className="w-full p-2.5 bg-[#F4F7F9] border-none rounded-lg text-[#1F1641] font-bold outline-none focus:ring-2 focus:ring-[#0486DB]/30" />
+                              <button className="w-10 bg-[#F4F7F9] rounded-lg flex items-center justify-center text-[#1F1641]/60 hover:bg-[#1F1641]/10 font-bold"><Minus size={16}/></button>
+                              <button className="w-10 bg-[#F4F7F9] rounded-lg flex items-center justify-center text-[#1F1641]/60 hover:bg-[#1F1641]/10 font-bold"><Plus size={16}/></button>
+                            </div>
+                         </div>
+
+                         <div className="space-y-1">
+                            <label className="text-xs font-bold text-[#1F1641]/60">容器空重 (g)</label>
+                             <div className="flex gap-2">
+                              <input type="number" placeholder="輸入空重" value={leftoverContainer} onChange={e=>setLeftoverContainer(e.target.value)} className="w-full p-2.5 bg-[#F4F7F9] border-none rounded-lg text-[#1F1641] font-bold outline-none focus:ring-2 focus:ring-[#0486DB]/30" />
+                              <button className="w-10 bg-[#F4F7F9] rounded-lg flex items-center justify-center text-[#1F1641]/60 hover:bg-[#1F1641]/10 font-bold"><Minus size={16}/></button>
+                              <button className="w-10 bg-[#F4F7F9] rounded-lg flex items-center justify-center text-[#1F1641]/60 hover:bg-[#1F1641]/10 font-bold"><Plus size={16}/></button>
+                            </div>
+                         </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div className="mt-6">
+                <button 
+                  className="w-full py-3.5 text-white rounded-xl font-bold text-lg shadow-lg hover:brightness-110 active:scale-[0.99] transition-all flex items-center justify-center gap-2"
+                  style={{ backgroundColor: THEME.darkBlue, boxShadow: `0 10px 15px -3px ${THEME.darkBlue}40` }}
+                >
+                  <Save size={20} />
+                  {activeTab === 'add' ? '儲存寫入 Google Sheet' : '記錄完食/剩餘'}
+                </button>
+              </div>
+
+            </div>
+          </div>
+        </Card>
+
+      </div>
+    </div>
+  );
+}
