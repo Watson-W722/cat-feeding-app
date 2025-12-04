@@ -1,4 +1,4 @@
-#  Python 程式碼 V9.0 (React UI 極致美化版)
+#  Python 程式碼 V9.1 (函式名稱修復版)
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 import uuid
 
 # --- 1. 設定頁面 ---
-st.set_page_config(page_title="咪咪的飲食日記", page_icon="🐱", layout="wide")
+st.set_page_config(page_title="大文餵食紀錄", page_icon="🐱", layout="wide")
 
 # --- 小工具 ---
 def safe_float(value):
@@ -71,7 +71,7 @@ def calculate_intake_breakdown(df):
 
 # --- [V9.0] React 風格 UI 渲染函式 ---
 def render_react_style_dashboard(day_stats, meal_stats, supp_list, med_list, current_date_str):
-    # SVG Icons from React code
+    # 定義 SVG 圖示
     icons = {
         "flame": '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.1.2-2.2.6-3.3a1 1 0 0 0 2.1.7z"></path></svg>',
         "utensils": '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>',
@@ -84,97 +84,76 @@ def render_react_style_dashboard(day_stats, meal_stats, supp_list, med_list, cur
         "calendar": '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/></svg>'
     }
 
-    # CSS 樣式 (React Theme Port)
     style = """
-<style>
-    /* Reset & Base */
-    .main-container { font-family: 'Segoe UI', sans-serif; color: #1F1641; }
-    
-    /* Cards */
-    .dashboard-card { 
-        background: white; 
-        border-radius: 16px; 
-        padding: 20px; 
-        box-shadow: 0 1px 3px rgba(0,0,0,0.05); 
-        border: 1px solid rgba(4, 134, 219, 0.1); 
-        margin-bottom: 20px; 
-    }
-    
-    /* Headers */
-    .section-title { 
-        font-size: 16px; 
-        font-weight: 700; 
-        color: #334155; 
-        display: flex; 
-        align-items: center; 
-        gap: 8px; 
-        margin-bottom: 16px; 
-    }
-    .section-icon { padding: 6px; border-radius: 8px; display: flex; align-items: center; justify-content: center; }
-    
-    /* Grid System */
-    .grid-stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
-    @media (max-width: 768px) { .grid-stats { grid-template-columns: repeat(2, 1fr); } }
-    
-    /* Stat Item */
-    .stat-item { 
-        background: white; 
-        border: 1px solid #f1f5f9; 
-        border-radius: 12px; 
-        padding: 12px; 
-        display: flex; 
-        flex-direction: column; 
-        justify-content: space-between; 
-        transition: all 0.2s;
-    }
-    .stat-item:hover { border-color: rgba(4, 134, 219, 0.2); box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-    
-    .stat-header { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
-    .stat-icon { padding: 4px; border-radius: 6px; display: flex; align-items: center; justify-content: center; }
-    .stat-value { font-size: 20px; font-weight: 800; color: #1e293b; line-height: 1.2; }
-    .stat-unit { font-size: 11px; font-weight: 500; color: #94a3b8; margin-left: 2px; }
-    
-    /* Tags */
-    .tag-container { display: flex; flex-wrap: wrap; gap: 8px; }
-    .tag { 
-        display: inline-flex; 
-        align-items: center; 
-        padding: 4px 10px; 
-        border-radius: 8px; 
-        font-size: 13px; 
-        font-weight: 500; 
-        border: 1px solid transparent; 
-        cursor: default;
-    }
-    .tag-count { 
-        background: rgba(255,255,255,0.8); 
-        padding: 1px 5px; 
-        border-radius: 4px; 
-        font-size: 10px; 
-        font-weight: 700; 
-        margin-left: 6px; 
-        box-shadow: 0 1px 1px rgba(0,0,0,0.05);
-    }
-    
-    /* Theme Colors */
-    .bg-orange { background: #fff7ed; color: #f97316; }
-    .bg-blue { background: #eff6ff; color: #3b82f6; }
-    .bg-cyan { background: #ecfeff; color: #06b6d4; }
-    .bg-red { background: #fef2f2; color: #ef4444; }
-    .bg-yellow { background: #fefce8; color: #eab308; }
-    
-    .tag-green { background: #ecfdf5; color: #047857; border-color: #d1fae5; }
-    .tag-red { background: #fff1f2; color: #be123c; border-color: #ffe4e6; }
-    
-    /* Progress Bar */
-    .bar-bg { height: 6px; width: 100%; background: #f1f5f9; border-radius: 99px; margin-top: 10px; overflow: hidden; }
-    .bar-fill { height: 100%; border-radius: 99px; transition: width 0.5s ease; }
-    
-    /* Main Header */
-    .main-header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; padding: 16px; background: white; border-radius: 16px; border: 1px solid rgba(4, 134, 219, 0.1); }
-    .header-icon { background: #4f46e5; padding: 10px; border-radius: 12px; color: white; display: flex; }
-</style>
-"""
+    <style>
+        .main-container { font-family: 'Segoe UI', sans-serif; color: #1F1641; }
+        .dashboard-card { 
+            background: white; 
+            border-radius: 16px; 
+            padding: 20px; 
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05); 
+            border: 1px solid rgba(4, 134, 219, 0.1); 
+            margin-bottom: 20px; 
+        }
+        .section-title { 
+            font-size: 16px; 
+            font-weight: 700; 
+            color: #334155; 
+            display: flex; 
+            align-items: center; 
+            gap: 8px; 
+            margin-bottom: 16px; 
+        }
+        .section-icon { padding: 6px; border-radius: 8px; display: flex; align-items: center; justify-content: center; }
+        .grid-stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
+        @media (max-width: 768px) { .grid-stats { grid-template-columns: repeat(2, 1fr); } }
+        .stat-item { 
+            background: white; 
+            border: 1px solid #f1f5f9; 
+            border-radius: 12px; 
+            padding: 12px; 
+            display: flex; 
+            flex-direction: column; 
+            justify-content: space-between; 
+            transition: all 0.2s;
+        }
+        .stat-header { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
+        .stat-icon { padding: 4px; border-radius: 6px; display: flex; align-items: center; justify-content: center; }
+        .stat-value { font-size: 20px; font-weight: 800; color: #1e293b; line-height: 1.2; }
+        .stat-unit { font-size: 11px; font-weight: 500; color: #94a3b8; margin-left: 2px; }
+        .tag-container { display: flex; flex-wrap: wrap; gap: 8px; }
+        .tag { 
+            display: inline-flex; 
+            align-items: center; 
+            padding: 4px 10px; 
+            border-radius: 8px; 
+            font-size: 13px; 
+            font-weight: 500; 
+            border: 1px solid transparent; 
+            cursor: default;
+        }
+        .tag-count { 
+            background: rgba(255,255,255,0.8); 
+            padding: 1px 5px; 
+            border-radius: 4px; 
+            font-size: 10px; 
+            font-weight: 700; 
+            margin-left: 6px; 
+            box-shadow: 0 1px 1px rgba(0,0,0,0.05);
+        }
+        .bg-orange { background: #fff7ed; color: #f97316; }
+        .bg-blue { background: #eff6ff; color: #3b82f6; }
+        .bg-cyan { background: #ecfeff; color: #06b6d4; }
+        .bg-red { background: #fef2f2; color: #ef4444; }
+        .bg-yellow { background: #fefce8; color: #eab308; }
+        .tag-green { background: #ecfdf5; color: #047857; border-color: #d1fae5; }
+        .tag-red { background: #fff1f2; color: #be123c; border-color: #ffe4e6; }
+        .bar-bg { height: 6px; width: 100%; background: #f1f5f9; border-radius: 99px; margin-top: 10px; overflow: hidden; }
+        .bar-fill { height: 100%; border-radius: 99px; transition: width 0.5s ease; }
+        .main-header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; padding: 16px; background: white; border-radius: 16px; border: 1px solid rgba(4, 134, 219, 0.1); }
+        .header-icon { background: #4f46e5; padding: 10px; border-radius: 12px; color: white; display: flex; }
+    </style>
+    """
 
     def get_stat_html(icon, label, value, unit, color_class, bar_color, percent=0):
         bar_html = f'<div class="bar-bg"><div class="bar-fill" style="width: {min(percent, 100)}%; background: {bar_color};"></div></div>' if percent > 0 else '<div style="height:6px; margin-top:10px"></div>'
@@ -207,15 +186,11 @@ def render_react_style_dashboard(day_stats, meal_stats, supp_list, med_list, cur
 """
 
     # 本日總計
-    # 假設熱量目標 250kcal, 蛋白質 60g, 脂肪 15g (僅供進度條展示)
     daily_html = f"""
 <div class="dashboard-card">
     <div class="section-title">
         <div class="section-icon bg-orange">{icons['activity']}</div>
         本日總計
-        <span style="margin-left:auto; font-size:11px; background:#fff7ed; color:#f97316; padding:3px 10px; border-radius:99px; font-weight:700;">
-            目標 {int(day_stats['cal'] / 2.5)}%
-        </span>
     </div>
     <div class="grid-stats">
         {get_stat_html("flame", "熱量", int(day_stats['cal']), "kcal", "bg-orange", "#f97316", day_stats['cal']/2.5)}
@@ -440,8 +415,7 @@ def clear_finish_inputs_callback():
 # ==========================================
 #      UI 佈局開始
 # ==========================================
-# [修正] 移除 st.title，因為 Header 已經在 React UI 裡了
-# st.title("🐱 大文餵食紀錄")
+# st.title("🐱 大文餵食紀錄") # 已移至 HTML Header
 
 # 初始化狀態
 if 'dash_open' not in st.session_state: st.session_state.dash_open = True
@@ -593,8 +567,9 @@ if not df_meal.empty:
     meal_stats['prot'] = df_meal_clean['Prot_Sub'].sum()
     meal_stats['fat'] = df_meal_clean['Fat_Sub'].sum()
 
-# 渲染 HTML Dashboard (包含 unsafe_allow_html=True)
-html_content = render_dashboard_html(day_stats, meal_stats, supp_list, med_list)
+# [修正] 補上缺少的參數
+formatted_date_str = record_date.strftime("%Y年 %m月 %d日")
+html_content = render_react_style_dashboard(day_stats, meal_stats, supp_list, med_list, formatted_date_str)
 dashboard_ph.markdown(html_content, unsafe_allow_html=True)
 
 # ==========================================
@@ -815,7 +790,6 @@ elif nav_mode == "🏁 完食/紀錄剩餘":
             if waste_net > 0:
                 st.warning(f"📉 實際剩餘淨重：{waste_net:.1f} g")
                 if not df_meal.empty:
-                    # [V7.5] 使用清洗後的 df 計算剩餘扣除熱量
                     df_meal_clean = clean_duplicate_finish_records(df_meal)
                     meal_foods = df_meal_clean[df_meal_clean['Net_Quantity'].apply(lambda x: safe_float(x)) > 0]
                     
