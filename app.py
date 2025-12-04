@@ -1,4 +1,4 @@
-# Python 程式碼 V10.6 (Bug 修復與配色定案版)
+# Python 程式碼 V10.7 (Dashboard 渲染修復版)
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -79,7 +79,7 @@ def inject_custom_css():
             --navy: #012172;   /* 主文字色 (您指定的深藍) */
             --beige: #BBBF95;  /* 邊框/強調色 */
             --bg: #F8FAFC;     /* 背景色 */
-            --text-muted: #5A6B8C; /* 次要文字色 (稍微淺一點的藍灰) */
+            --text-muted: #5A6B8C; /* 次要文字色 */
         }
 
         /* 全局樣式 */
@@ -182,7 +182,7 @@ def inject_custom_css():
             color: var(--navy) !important;
         }
         
-        /* Colors (保持 Icon 背景色，但文字用 Navy) */
+        /* Colors */
         .bg-orange { background: #fff7ed; color: #f97316; }
         .bg-blue { background: #eff6ff; color: #3b82f6; }
         .bg-cyan { background: #ecfeff; color: #06b6d4; }
@@ -218,7 +218,7 @@ def render_header(date_str):
     </div>
     """)
 
-# UI 渲染函式 (左欄 Dashboard) - [V10.6 修正：移除 date_display 參數]
+# UI 渲染函式 (左欄 Dashboard) - [V10.7 修正：加入 textwrap.dedent]
 def render_dashboard_content(day_stats, supp_list, med_list):
     icons = {
         "activity": '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>',
@@ -250,6 +250,7 @@ def render_dashboard_content(day_stats, supp_list, med_list):
             html += f"""<span class="tag {type_class}">{icons[icon_key]} {item['name']}<span class="tag-count">x{int(item['count'])}</span></span>"""
         return html
 
+    # [修正] 使用 textwrap.dedent 移除縮排
     return textwrap.dedent(f"""
     <div class="dashboard-card">
         <div class="section-title"><div class="section-icon bg-orange">{icons['activity']}</div>本日健康總覽</div>
@@ -279,7 +280,7 @@ def render_dashboard_content(day_stats, supp_list, med_list):
     </div>
     """)
 
-# [V10.5] 移除 Icon 的極簡本餐小計
+# [V10.5] 極簡本餐小計
 def render_meal_stats_simple(meal_stats):
     return textwrap.dedent(f"""
     <div style="display:grid; grid-template-columns: repeat(5, 1fr); gap:0; background:#FDFDF9; border:1px solid #BBBF95; border-radius:12px; padding:12px 0; margin-bottom:15px;">
@@ -516,13 +517,14 @@ with st.sidebar:
     raw_record_time = st.text_input("🕒 時間 (如 0618)", value=default_sidebar_time)
     record_time_str = format_time_str(raw_record_time)
     st.caption(f"將記錄為：{record_time_str}")
-    st.caption("輸入數字後，點擊空白處即可生效")
     
     if st.button("🔄 重新整理數據"):
         load_data.clear()
         st.rerun()
 
-# --- 1. 數據準備 ---
+# ----------------------------------------------------
+# 1. 數據準備
+# ----------------------------------------------------
 df_today = pd.DataFrame()
 day_stats = {'cal':0, 'food':0, 'water':0, 'prot':0, 'fat':0}
 meal_stats = {'name': '尚未選擇', 'cal':0, 'food':0, 'water':0, 'prot':0, 'fat':0}
@@ -569,7 +571,7 @@ col_dash, col_input = st.columns([4, 3], gap="medium")
 # --- 左欄：Dashboard ---
 with col_dash:
     with st.container():
-        # [修正] 呼叫函式時，只傳入 3 個參數 (移除 date_display)
+        # [修正] 使用 textwrap.dedent 的渲染函式
         st.markdown(render_dashboard_content(day_stats, supp_list, med_list), unsafe_allow_html=True)
 
 # --- 右欄：操作區 ---
@@ -666,7 +668,7 @@ with col_input:
             last_ref_weight = last_reading_db
             last_ref_name = last_item_db
 
-        # --- 新增模式 ---
+        # --- 模式 1: 新增 ---
         if nav_mode == "➕ 新增食物/藥品":
             st.markdown(f"##### 🍽️ 編輯：{meal_name}")
             
@@ -802,16 +804,18 @@ with col_input:
                         except Exception as e:
                             st.error(f"寫入失敗：{e}")
 
-        # --- 完食 ---
+        # --- 模式 2: 完食 ---
         elif nav_mode == "🏁 完食/紀錄剩餘":
             st.markdown(f"##### 🍽️ 編輯：{meal_name}")
             st.caption("紀錄完食時間，若有剩餘，請將剩食倒入新容器(或原碗)秤重")
             
             finish_date = st.date_input("完食日期", value=record_date, key="finish_date_picker")
             str_finish_date = finish_date.strftime("%Y/%m/%d")
+            
             default_now = get_tw_time().strftime("%H%M")
             raw_finish_time = st.text_input("完食時間 (如 1806)", value=default_now, key="finish_time_input")
             fmt_finish_time = format_time_str(raw_finish_time)
+            
             st.caption(f"📝 將記錄為：{str_finish_date} **{fmt_finish_time}**")
 
             finish_type = st.radio("狀態", ["全部吃光 (盤光光)", "有剩餘 (需秤重)"], horizontal=True, key="finish_radio")
