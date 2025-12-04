@@ -1,4 +1,4 @@
-# Python 程式碼 V11.4 (UI 結構重構與細節修正版)
+# Python 程式碼 V11.5 (穩定版面修正版)
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -7,10 +7,9 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime, timedelta, timezone
 import uuid
-import textwrap
 
 # --- 1. 設定頁面 ---
-st.set_page_config(page_title="大文的飲食日記", page_icon="🐱", layout="wide")
+st.set_page_config(page_title="大文餵食紀錄", page_icon="🐱", layout="wide")
 
 # --- 小工具 ---
 def safe_float(value):
@@ -32,7 +31,7 @@ def format_time_str(t_str):
         return f"{t_str[:2]}:{t_str[2:]}"
     return t_str if ":" in str(t_str) else get_tw_time().strftime("%H:%M")
 
-# [V7.5] 清洗重複完食紀錄工具
+# 清洗重複完食紀錄工具
 def clean_duplicate_finish_records(df):
     if df.empty: return df
     mask_finish = df['ItemID'].isin(['WASTE', 'FINISH'])
@@ -42,7 +41,7 @@ def clean_duplicate_finish_records(df):
     df_finish_clean = df_finish.drop_duplicates(subset=['Meal_Name'], keep='last')
     return pd.concat([df_others, df_finish_clean], ignore_index=True)
 
-# [V7.0] 智能權重拆分計算
+# 智能權重拆分計算
 def calculate_intake_breakdown(df):
     if df.empty: return 0.0, 0.0
     if 'Category' in df.columns: df['Category'] = df['Category'].astype(str).str.strip()
@@ -70,107 +69,33 @@ def calculate_intake_breakdown(df):
     final_food_net = input_food + (total_waste * ratio_food)
     return final_food_net, final_water_net
 
-# --- [V11.4] CSS 注入 (樣式精修) ---
+# --- CSS 注入 ---
 def inject_custom_css():
     st.markdown("""
     <style>
-        :root { 
-            --navy: #012172;
-            --beige: #BBBF95;
-            --bg: #F8FAFC;
-            --text-muted: #5A6B8C;
-        }
+        :root { --navy: #012172; --beige: #BBBF95; --bg: #F8FAFC; --text-muted: #5A6B8C; }
         .stApp { background-color: var(--bg); font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: var(--navy); }
         .block-container { padding-top: 1rem; padding-bottom: 5rem; }
-        
-        /* 強制統一標題 H4 樣式 */
-        h4 {
-            font-size: 20px !important;
-            font-weight: 700 !important;
-            color: var(--navy) !important;
-            padding-bottom: 0.5rem;
-            margin-bottom: 0rem;
-            font-family: 'Segoe UI', sans-serif;
-        }
-
-        /* Expander Header 樣式 (配合 H4) */
-        .streamlit-expanderHeader {
-            font-size: 16px !important;
-            font-weight: 600 !important;
-            color: var(--text-muted) !important;
-            background-color: white;
-            border: 1px solid #e2e8f0;
-            border-radius: 8px;
-        }
-        
-        /* 容器樣式 (外框線) */
-        div[data-testid="stVerticalBlock"] > div[style*="background-color"] {
-            background: white; border-radius: 16px;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.04);
-            border: 1px solid rgba(1, 33, 114, 0.1);
-            padding: 24px;
-        }
-
-        /* 數據網格 (2行) */
+        h4 { font-size: 20px !important; font-weight: 700 !important; color: var(--navy) !important; padding-bottom: 0.5rem; margin-bottom: 0rem; font-family: 'Segoe UI', sans-serif; }
+        .streamlit-expanderHeader { font-size: 16px !important; font-weight: 600 !important; color: var(--text-muted) !important; background-color: white; border: 1px solid #e2e8f0; border-radius: 8px; }
+        div[data-testid="stVerticalBlock"] > div[style*="background-color"] { background: white; border-radius: 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.04); border: 1px solid rgba(1, 33, 114, 0.1); padding: 24px; }
         .grid-row-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px; }
         .grid-row-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 0px; }
-        
-        @media (max-width: 640px) { 
-            .grid-row-3 { grid-template-columns: repeat(2, 1fr); } 
-            .grid-row-2 { grid-template-columns: repeat(2, 1fr); }
-        }
-
-        /* 數據單項 (加粗框線) */
-        .stat-item { 
-            background: #fff; 
-            border: 2px solid #e2e8f0; /* [修正] 加粗 */
-            border-radius: 12px; 
-            padding: 16px 12px; 
-            display: flex; flex-direction: column; justify-content: space-between; align-items: center; text-align: center;
-        }
-        
-        .stat-header { 
-            display: flex; align-items: center; gap: 6px; margin-bottom: 8px; 
-            font-size: 14px; font-weight: 700; color: var(--text-muted) !important; text-transform: uppercase; 
-        }
+        @media (max-width: 640px) { .grid-row-3 { grid-template-columns: repeat(2, 1fr); } .grid-row-2 { grid-template-columns: repeat(2, 1fr); } }
+        .stat-item { background: #fff; border: 2px solid #e2e8f0; border-radius: 12px; padding: 16px 12px; display: flex; flex-direction: column; justify-content: space-between; align-items: center; text-align: center; }
+        .stat-header { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; font-size: 14px; font-weight: 700; color: var(--text-muted) !important; text-transform: uppercase; }
         .stat-icon { padding: 4px; border-radius: 6px; display: flex; align-items: center; justify-content: center; }
-        
-        .stat-value { 
-            font-size: 32px; font-weight: 900; color: var(--navy) !important; line-height: 1.1; 
-        }
+        .stat-value { font-size: 32px; font-weight: 900; color: var(--navy) !important; line-height: 1.1; }
         .stat-unit { font-size: 14px; font-weight: 600; color: var(--text-muted) !important; margin-left: 2px; }
-        
-        /* 右欄小計 */
-        .simple-grid {
-            display: grid; grid-template-columns: repeat(5, 1fr); gap: 0;
-            background: #FDFDF9; border: 1px solid var(--beige);
-            border-radius: 12px; padding: 10px 0; margin-bottom: 15px;
-            width: 100%;
-        }
-        .simple-item {
-            text-align: center; padding: 0 2px;
-            border-right: 1px solid rgba(1, 33, 114, 0.1);
-            display: flex; flex-direction: column; justify-content: center;
-        }
+        .simple-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0; background: #FDFDF9; border: 1px solid var(--beige); border-radius: 12px; padding: 10px 0; margin-bottom: 15px; width: 100%; }
+        .simple-item { text-align: center; padding: 0 2px; border-right: 1px solid rgba(1, 33, 114, 0.1); display: flex; flex-direction: column; justify-content: center; }
         .simple-item:last-child { border-right: none; }
         .simple-label { font-size: 11px; color: var(--text-muted) !important; font-weight: 700; margin-bottom: 2px; }
         .simple-value { font-size: 16px; color: var(--navy) !important; font-weight: 800; line-height: 1.2; }
         .simple-unit { font-size: 10px; color: var(--text-muted) !important; margin-left: 1px; }
-
-        /* Tags */
-        .tag-container { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; } /* [修正] 增加底部距離 */
-        .tag { 
-            display: inline-flex; align-items: center; padding: 6px 12px; 
-            border-radius: 8px; font-size: 14px; font-weight: 600; 
-            border: 1px solid transparent; color: var(--navy) !important;
-        }
-        .tag-count { 
-            background: rgba(255,255,255,0.8); padding: 0px 6px; 
-            border-radius: 4px; font-size: 12px; font-weight: 800; margin-left: 6px; 
-            color: var(--navy) !important;
-        }
-        
-        /* Colors */
+        .tag-container { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+        .tag { display: inline-flex; align-items: center; padding: 6px 12px; border-radius: 8px; font-size: 14px; font-weight: 600; border: 1px solid transparent; color: var(--navy) !important; }
+        .tag-count { background: rgba(255,255,255,0.8); padding: 0px 6px; border-radius: 4px; font-size: 12px; font-weight: 800; margin-left: 6px; color: var(--navy) !important; }
         .bg-orange { background: #fff7ed; color: #f97316; }
         .bg-blue { background: #eff6ff; color: #3b82f6; }
         .bg-cyan { background: #ecfeff; color: #06b6d4; }
@@ -178,31 +103,16 @@ def inject_custom_css():
         .bg-yellow { background: #fefce8; color: #eab308; }
         .tag-green { background: #ecfdf5; border: 1px solid #d1fae5; color: #047857 !important; }
         .tag-red { background: #fff1f2; border: 1px solid #ffe4e6; color: #be123c !important; }
-        
-        /* Header */
-        .main-header { 
-            display: flex; align-items: center; gap: 12px; 
-            margin-top: 5px; margin-bottom: 24px; 
-            padding: 20px; background: white; border-radius: 16px; 
-            border: 1px solid rgba(1, 33, 114, 0.1);
-            box-shadow: 0 4px 6px rgba(0,0,0,0.02); 
-        }
+        .main-header { display: flex; align-items: center; gap: 12px; margin-top: 5px; margin-bottom: 24px; padding: 20px; background: white; border-radius: 16px; border: 1px solid rgba(1, 33, 114, 0.1); box-shadow: 0 4px 6px rgba(0,0,0,0.02); }
         .header-icon { background: var(--navy); padding: 12px; border-radius: 12px; color: white !important; display: flex; }
     </style>
     """, unsafe_allow_html=True)
 
-# UI 渲染函式 (Header)
 def render_header(date_str):
-    cat_svg = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5c.67 0 1.35.09 2 .26 1.78-2 5.03-2.84 6.42-2.26 1.4.58-.42 7-.42 7 .57 1.07 1 2.24 1 3.44C21 17.9 16.97 21 12 21S3 17.9 3 13.44C3 12.24 3.43 11.07 4 10c0 0-1.82-6.42-.42-7 1.39-.58 4.64.26 6.42 2.26.65-.17 1.33-.26 2-.26z"/><path d="M9 13h.01"/><path d="M15 13h.01"/></svg>'
-    html = '<div class="main-header">'
-    html += f'<div class="header-icon">{cat_svg}</div>'
-    html += '<div>'
-    html += '<div style="font-size:24px; font-weight:800; color:#012172;">大文的飲食日記</div>'
-    html += f'<div style="font-size:15px; font-weight:500; color:#5A6B8C;">{date_str}</div>'
-    html += '</div></div>'
+    cat_svg = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5c.67 0 1.35.09 2 .26 1.78-2 5.03-2.84 6.42-2.26 1.4.58-.42 7-.42 7 .57 1.07 1 2.24 1 3.44C21 17.9 16.97 21 12 21S3 17.9 3 13.44C3 12.24 3.43 11.07 4 10c0 0-1.82-6.42-.42-7 1.39-.58 4.64.26 6.42 2.26.65-.17 1.35-.26 2-.26z"/><path d="M9 13h.01"/><path d="M15 13h.01"/></svg>'
+    html = f'<div class="main-header"><div class="header-icon">{cat_svg}</div><div><div style="font-size:24px; font-weight:800; color:#012172;">大文的飲食日記</div><div style="font-size:15px; font-weight:500; color:#5A6B8C;">{date_str}</div></div></div>'
     return html
 
-# [V11.4] 拆分後的 HTML 渲染：今日營養攝取
 def render_daily_stats_html(day_stats):
     icons = {
         "flame": '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.1.2-2.2.6-3.3a1 1 0 0 0 2.1.7z"></path></svg>',
@@ -212,25 +122,22 @@ def render_daily_stats_html(day_stats):
         "dna": '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 15c6.638 0 12-5.362 12-12"/><path d="M10 21c6.638 0 12-5.362 12-12"/><path d="m2 3 20 18"/><path d="M12.818 8.182a4.92 4.92 0 0 0-1.636-1.636"/><path d="M16.364 11.728a9.862 9.862 0 0 0-3.092-3.092"/><path d="M9.272 15.364a9.862 9.862 0 0 0-3.092-3.092"/><path d="M12.818 18.91a4.92 4.92 0 0 0-1.636-1.636"/></svg>'
     }
     
-    # [修正] 移除 progress bar，僅顯示數值
-    def get_stat_html(icon, label, value, unit, color_class, bar_color):
+    def get_stat_html(icon, label, value, unit, color_class):
         return f'<div class="stat-item"><div><div class="stat-header"><div class="stat-icon {color_class}">{icons[icon]}</div>{label}</div><div style="display:flex; align-items:baseline; justify-content:center;"><span class="stat-value">{value}</span><span class="stat-unit">{unit}</span></div></div></div>'
 
     html = '<div class="grid-row-3">'
-    html += get_stat_html("flame", "熱量", int(day_stats['cal']), "kcal", "bg-orange", "#f97316")
-    html += get_stat_html("utensils", "食物", f"{day_stats['food']:.1f}", "g", "bg-blue", "#3b82f6")
-    html += get_stat_html("droplets", "飲水", f"{day_stats['water']:.1f}", "ml", "bg-cyan", "#06b6d4")
+    html += get_stat_html("flame", "熱量", int(day_stats['cal']), "kcal", "bg-orange")
+    html += get_stat_html("utensils", "食物", f"{day_stats['food']:.1f}", "g", "bg-blue")
+    html += get_stat_html("droplets", "飲水", f"{day_stats['water']:.1f}", "ml", "bg-cyan")
     html += '</div>'
     
     html += '<div class="grid-row-2">'
-    html += get_stat_html("beef", "蛋白質", f"{day_stats['prot']:.1f}", "g", "bg-red", "#ef4444")
-    html += get_stat_html("dna", "脂肪", f"{day_stats['fat']:.1f}", "g", "bg-yellow", "#eab308")
+    html += get_stat_html("beef", "蛋白質", f"{day_stats['prot']:.1f}", "g", "bg-red")
+    html += get_stat_html("dna", "脂肪", f"{day_stats['fat']:.1f}", "g", "bg-yellow")
     html += '</div>'
     return html
 
-# [V11.4] 拆分後的 HTML 渲染：保養與藥品
 def render_supp_med_html(supp_list, med_list):
-    # [修正] 移除 tag 內的 icon
     def get_tag_html(items, type_class):
         if not items: return '<span style="color:#5A6B8C; font-size:13px;">無</span>'
         tags = ""
@@ -244,20 +151,14 @@ def render_supp_med_html(supp_list, med_list):
     }
 
     html = '<div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px; margin-top:0px;">'
-    
-    # Supplements
     html += '<div>'
     html += f'<div style="display:flex; align-items:center; gap:6px; margin-bottom:8px; font-size:12px; font-weight:700; color:#047857; text-transform:uppercase;">{icons["leaf"]} 保養品</div>'
     html += f'<div class="tag-container">{get_tag_html(supp_list, "tag-green")}</div>'
     html += '</div>'
-    
-    # Meds
     html += '<div style="border-left:1px solid #f1f5f9; padding-left:20px;">'
     html += f'<div style="display:flex; align-items:center; gap:6px; margin-bottom:8px; font-size:12px; font-weight:700; color:#be123c; text-transform:uppercase;">{icons["pill"]} 藥品</div>'
     html += f'<div class="tag-container">{get_tag_html(med_list, "tag-red")}</div>'
-    html += '</div>'
-    
-    html += '</div>'
+    html += '</div></div>'
     return html
 
 def render_meal_stats_simple(meal_stats):
@@ -384,7 +285,7 @@ def add_to_cart_callback(bowl_w, last_ref_w, last_ref_n):
     
     st.session_state.scale_val = None
     st.session_state.check_zero = False
-    st.session_state.meal_open = False
+    st.session_state.meal_open = False # 加入後自動收合
     st.session_state.just_saved = True
 
 def save_finish_callback(finish_type, waste_net, waste_cal, bowl_w, meal_n, finish_time_str, record_date_obj):
@@ -435,9 +336,12 @@ def save_finish_callback(finish_type, waste_net, waste_cal, bowl_w, meal_n, fini
         sheet_log.append_row(row)
         st.toast("✅ 完食紀錄已更新 (舊紀錄已覆蓋)")
         load_data.clear()
-        clear_finish_inputs_callback()
+        
+        st.session_state.waste_gross = None
+        st.session_state.waste_tare = None
+        st.session_state.finish_error = None
+        
         st.session_state.just_saved = True
-        # st.rerun()
     except Exception as e:
         st.session_state.finish_error = f"寫入失敗：{e}"
 
@@ -453,10 +357,12 @@ def clear_finish_inputs_callback():
 inject_custom_css()
 
 # 初始化狀態
-if 'dash_stat_open' not in st.session_state: st.session_state.dash_stat_open = True
-if 'dash_med_open' not in st.session_state: st.session_state.dash_med_open = True
+# [修正] 預設收合 (False)
+if 'dash_stat_open' not in st.session_state: st.session_state.dash_stat_open = False
+if 'dash_med_open' not in st.session_state: st.session_state.dash_med_open = False
 if 'meal_open' not in st.session_state: st.session_state.meal_open = False
-if 'meal_stats_open' not in st.session_state: st.session_state.meal_stats_open = True
+if 'meal_stats_open' not in st.session_state: st.session_state.meal_stats_open = False # 本餐小計預設收合
+
 if 'just_saved' not in st.session_state: st.session_state.just_saved = False
 if 'finish_radio' not in st.session_state: st.session_state.finish_radio = "全部吃光 (盤光光)"
 if 'nav_mode' not in st.session_state: st.session_state.nav_mode = "➕ 新增食物/藥品"
@@ -484,6 +390,7 @@ with st.sidebar:
     raw_record_time = st.text_input("🕒 時間 (如 0618)", value=default_sidebar_time)
     record_time_str = format_time_str(raw_record_time)
     st.caption(f"將記錄為：{record_time_str}")
+    st.caption("輸入數字後，點擊空白處即可生效")
     
     if st.button("🔄 重新整理數據"):
         load_data.clear()
@@ -528,7 +435,7 @@ if not df_log.empty:
                 med_list = [{'name': k, 'count': v} for k, v in counts.items()]
 
 # ----------------------------------------------------
-# 2. 佈局實作
+# 2. 佈局實作 (Dashboard 放在最上)
 # ----------------------------------------------------
 date_display = record_date.strftime("%Y年 %m月 %d日")
 st.markdown(render_header(date_display), unsafe_allow_html=True)
@@ -537,14 +444,15 @@ col_dash, col_input = st.columns([4, 3], gap="medium")
 
 # --- 左欄：Dashboard ---
 with col_dash:
-    # [V11.4] 使用 container(border=True) 加上外框線
     with st.container(border=True):
         st.markdown("#### 📊 本日健康總覽")
         
-        with st.expander("📝 今日營養攝取", expanded=st.session_state.dash_stat_open):
+        # [修正] 預設收合
+        with st.expander("📝 今日營養攝取 (點擊展開)", expanded=st.session_state.dash_stat_open):
              st.markdown(render_daily_stats_html(day_stats), unsafe_allow_html=True)
         
-        with st.expander("💊 今日保養與藥品服用", expanded=st.session_state.dash_med_open):
+        # [修正] 預設收合
+        with st.expander("💊 今日保養與藥品服用 (點擊展開)", expanded=st.session_state.dash_med_open):
              st.markdown(render_supp_med_html(supp_list, med_list), unsafe_allow_html=True)
 
 # --- 右欄：操作區 ---
@@ -567,6 +475,9 @@ with col_input:
 
     with st.container(border=True):
         st.markdown("#### 🍽️ 本日飲食紀錄")
+        
+        # 透過 on_change 觸發收合
+        # (注意：這裡選擇器改變，會觸發 rerun，重置 expander_open 狀態)
         
         c_meal, c_bowl = st.columns(2)
         with c_meal:
@@ -595,9 +506,9 @@ with col_input:
         with c_bowl:
             bowl_weight = st.number_input("🥣 碗重 (g)", value=last_bowl, step=0.1, format="%.1f")
 
-        # [V11.4] 明細位置移到這裡
+        # [修正] 預設收合 (expanded=False)
         if not df_meal.empty:
-            with st.expander(f"📜 查看 {meal_name} 已記錄明細"):
+            with st.expander(f"📜 查看 {meal_name} 已記錄明細", expanded=False):
                 view_df = df_meal[['Item_Name', 'Net_Quantity', 'Cal_Sub', 'Time']].copy()
                 def append_time_to_finish(row):
                     if '完食' in str(row['Item_Name']):
@@ -623,7 +534,8 @@ with col_input:
             meal_stats['prot'] = df_meal_clean['Prot_Sub'].sum()
             meal_stats['fat'] = df_meal_clean['Fat_Sub'].sum()
         
-        with st.expander("📊 本餐營養小計", expanded=st.session_state.meal_stats_open):
+        # [修正] 預設收合
+        with st.expander("📊 本餐營養小計 (點擊展開)", expanded=st.session_state.meal_stats_open):
             st.markdown(render_meal_stats_simple(meal_stats), unsafe_allow_html=True)
 
         st.divider()
@@ -757,7 +669,6 @@ with col_input:
                         st.info(f"∑ 總計 (不含藥)：{live_sum_net:.1f} g  |  🔥 {live_sum_cal:.1f} kcal")
                     except: pass
                 
-                # [V11.0] 行動版刪除選單
                 delete_options = ["請選擇要刪除的項目..."] + [f"{i+1}. {row['Item_Name']} ({row['Net_Quantity']}g)" for i, row in edited_df.iterrows()]
                 del_item = st.selectbox("🗑️ 刪除項目 (行動版專用)", delete_options)
                 
