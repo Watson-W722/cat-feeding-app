@@ -1,4 +1,4 @@
-#  Python 程式碼 V11.2 (UI 完美一致版)
+#  Python 程式碼 V11.3 (極簡化 UI 與結構重構版)
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -70,7 +70,7 @@ def calculate_intake_breakdown(df):
     final_food_net = input_food + (total_waste * ratio_food)
     return final_food_net, final_water_net
 
-# --- [V11.2] CSS 注入 (字體強制統一) ---
+# --- [V11.3] CSS 注入 ---
 def inject_custom_css():
     st.markdown("""
     <style>
@@ -83,87 +83,64 @@ def inject_custom_css():
         .stApp { background-color: var(--bg); font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: var(--navy); }
         .block-container { padding-top: 1rem; padding-bottom: 5rem; }
         
-        /* [修正] 強制統一 Expander 標題與 H4 標題樣式 */
-        .streamlit-expanderHeader p {
-            font-size: 18px !important;
-            font-weight: 700 !important;
-            color: var(--navy) !important;
-        }
+        /* 統一標題樣式 (H4) */
         h4 {
-            font-size: 18px !important;
+            font-size: 20px !important;
             font-weight: 700 !important;
             color: var(--navy) !important;
             padding-bottom: 0.5rem;
+            margin-bottom: 0rem;
         }
         
-        /* [修正] 容器樣式統一 */
+        /* Expander Header 樣式 */
+        .streamlit-expanderHeader {
+            font-size: 16px !important;
+            font-weight: 600 !important;
+            color: var(--text-muted) !important;
+            background-color: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+        }
+
+        /* 容器樣式 */
         div[data-testid="stVerticalBlock"] > div[style*="background-color"] {
             background: white; border-radius: 16px;
             box-shadow: 0 2px 6px rgba(0,0,0,0.04);
             border: 1px solid rgba(1, 33, 114, 0.1);
-            padding: 20px;
+            padding: 24px;
         }
-        .dashboard-card { 
-            background: white; border-radius: 16px; padding: 0px; 
-            margin-bottom: 0px; border: none; box-shadow: none;
-        }
-        
-        /* [修正] 本日總覽標題 (對齊右側) */
-        .section-title { 
-            font-size: 18px; font-weight: 700; color: var(--navy) !important; 
-            display: flex; align-items: center; gap: 8px; 
-            margin-bottom: 16px; padding-bottom: 8px;
-            border-bottom: 1px solid rgba(1, 33, 114, 0.1);
-        }
-        
-        /* [修正] 本餐小計跑版修復 */
+
+        /* 極簡數據網格 */
         .simple-grid {
             display: grid; grid-template-columns: repeat(5, 1fr); gap: 0;
-            background: #FDFDF9; border: 1px solid var(--beige);
-            border-radius: 12px; padding: 10px 0; margin-bottom: 15px;
-            width: 100%;
+            background: #fff; border: 1px solid #f1f5f9;
+            border-radius: 12px; padding: 12px 0; margin-bottom: 0px;
         }
         .simple-item {
-            text-align: center; padding: 0 2px;
-            border-right: 1px solid rgba(1, 33, 114, 0.1);
+            text-align: center; padding: 0 4px;
+            border-right: 1px solid #f1f5f9;
             display: flex; flex-direction: column; justify-content: center;
         }
         .simple-item:last-child { border-right: none; }
-        .simple-label { font-size: 11px; color: var(--text-muted) !important; font-weight: 700; margin-bottom: 2px; }
-        .simple-value { font-size: 16px; color: var(--navy) !important; font-weight: 800; line-height: 1.2; }
-        .simple-unit { font-size: 10px; color: var(--text-muted) !important; margin-left: 1px; }
-
-        /* Grid Stats */
-        .grid-stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
-        .stat-item { 
-            background: #fff; border: 1px solid #f1f5f9; border-radius: 10px; padding: 10px; 
-            display: flex; flex-direction: column; justify-content: space-between; 
-        }
-        .stat-header { 
-            display: flex; align-items: center; gap: 4px; margin-bottom: 4px; 
-            font-size: 11px; font-weight: 600; color: var(--text-muted) !important; text-transform: uppercase; 
-        }
-        .stat-value { 
-            font-size: 22px; font-weight: 800; color: var(--navy) !important; line-height: 1.1; 
-        }
-        .stat-unit { font-size: 11px; font-weight: 600; color: var(--text-muted) !important; }
+        .simple-label { font-size: 11px; color: var(--text-muted); font-weight: 700; margin-bottom: 4px; text-transform:uppercase; }
+        .simple-value { font-size: 20px; color: var(--navy); font-weight: 800; line-height:1.2; }
+        .simple-unit { font-size: 10px; color: var(--text-muted); margin-left: 2px; font-weight: 500; }
 
         /* Tags */
         .tag-container { display: flex; flex-wrap: wrap; gap: 6px; }
         .tag { 
-            display: inline-flex; align-items: center; padding: 3px 8px; 
-            border-radius: 6px; font-size: 12px; font-weight: 600; 
+            display: inline-flex; align-items: center; padding: 4px 10px; 
+            border-radius: 6px; font-size: 13px; font-weight: 600; 
             border: 1px solid transparent; color: var(--navy) !important;
         }
         .tag-count { 
             background: rgba(255,255,255,0.8); padding: 0px 5px; 
-            border-radius: 4px; font-size: 10px; font-weight: 800; margin-left: 5px; 
+            border-radius: 4px; font-size: 11px; font-weight: 800; margin-left: 5px; 
             color: var(--navy) !important;
         }
         .tag-green { background: #ecfdf5; border: 1px solid #d1fae5; color: #047857 !important; }
         .tag-red { background: #fff1f2; border: 1px solid #ffe4e6; color: #be123c !important; }
-
-        /* Header */
+        
         .main-header { 
             display: flex; align-items: center; gap: 12px; margin-bottom: 20px; 
             padding: 16px; background: white; border-radius: 16px; 
@@ -171,111 +148,56 @@ def inject_custom_css():
             box-shadow: 0 2px 4px rgba(0,0,0,0.02); 
         }
         .header-icon { background: var(--navy); padding: 10px; border-radius: 12px; color: white !important; display: flex; }
-        .bar-bg { height: 6px; width: 100%; background: #f1f5f9; border-radius: 99px; margin-top: 6px; overflow: hidden; }
-        .bar-fill { height: 100%; border-radius: 99px; }
-        
-        /* Icons */
-        .section-icon { padding: 6px; border-radius: 8px; display: flex; align-items: center; justify-content: center; }
-        .stat-icon { padding: 4px; border-radius: 6px; display: flex; align-items: center; justify-content: center; }
-        .bg-orange { background: #fff7ed; color: #f97316; }
-        .bg-blue { background: #eff6ff; color: #3b82f6; }
-        .bg-cyan { background: #ecfeff; color: #06b6d4; }
-        .bg-red { background: #fef2f2; color: #ef4444; }
-        .bg-yellow { background: #fefce8; color: #eab308; }
-        .bg-green { background: #ecfdf5; color: #047857; }
     </style>
     """, unsafe_allow_html=True)
 
 # UI 渲染函式 (Header)
 def render_header(date_str):
     cat_svg = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5c.67 0 1.35.09 2 .26 1.78-2 5.03-2.84 6.42-2.26 1.4.58-.42 7-.42 7 .57 1.07 1 2.24 1 3.44C21 17.9 16.97 21 12 21S3 17.9 3 13.44C3 12.24 3.43 11.07 4 10c0 0-1.82-6.42-.42-7 1.39-.58 4.64.26 6.42 2.26.65-.17 1.33-.26 2-.26z"/><path d="M9 13h.01"/><path d="M15 13h.01"/></svg>'
-    return textwrap.dedent(f"""
-    <div class="main-header">
-        <div class="header-icon">{cat_svg}</div>
-        <div>
-            <div style="font-size:20px; font-weight:800; color:#012172;">咪咪的飲食日記</div>
-            <div style="font-size:14px; font-weight:500; color:#5A6B8C;">{date_str}</div>
-        </div>
-    </div>
-    """)
+    html = '<div class="main-header">'
+    html += f'<div class="header-icon">{cat_svg}</div>'
+    html += '<div>'
+    html += '<div style="font-size:20px; font-weight:800; color:#012172;">咪咪的飲食日記</div>'
+    html += f'<div style="font-size:14px; font-weight:500; color:#5A6B8C;">{date_str}</div>'
+    html += '</div></div>'
+    return html
 
-# UI 渲染函式 (左欄 Dashboard)
-def render_dashboard_content(day_stats, supp_list, med_list):
-    icons = {
-        "activity": '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>',
-        "flame": '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.1.2-2.2.6-3.3a1 1 0 0 0 2.1.7z"></path></svg>',
-        "utensils": '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>',
-        "droplets": '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 16.3c2.2 0 4-1.83 4-4.05 0-1.16-.57-2.26-1.71-3.19S7.29 6.75 7 5.3c-.29 1.45-1.14 2.84-2.29 3.76S3 11.1 3 12.25c0 2.22 1.8 4.05 4 4.05z"/><path d="M12.56 6.6A10.97 10.97 0 0 0 14 3.02c.5 2.5 2 4.9 4 6.5s3 3.5 3 5.5a6.98 6.98 0 0 1-11.91 4.97"/></svg>',
-        "beef": '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12.5" cy="8.5" r="2.5"/><path d="M12.5 2a6.5 6.5 0 0 0-6.22 4.6c-1.1 3.13-.78 6.43 1.48 9.17l2.92 2.92c.65.65 1.74.65 2.39 0l.97-.97a6 6 0 0 1 4.24-1.76h.04a6 6 0 0 0 3.79-1.35l.81-.81a2.5 2.5 0 0 0-3.54-3.54l-.47.47a1.5 1.5 0 0 1-2.12 0l-.88-.88a2.5 2.5 0 0 1 0-3.54l.84-.84c.76-.76.88-2 .2-2.86A6.5 6.5 0 0 0 12.5 2Z"/></svg>',
-        "dna": '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 15c6.638 0 12-5.362 12-12"/><path d="M10 21c6.638 0 12-5.362 12-12"/><path d="m2 3 20 18"/><path d="M12.818 8.182a4.92 4.92 0 0 0-1.636-1.636"/><path d="M16.364 11.728a9.862 9.862 0 0 0-3.092-3.092"/><path d="M9.272 15.364a9.862 9.862 0 0 0-3.092-3.092"/><path d="M12.818 18.91a4.92 4.92 0 0 0-1.636-1.636"/></svg>',
-        "pill": '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7Z"/><path d="m8.5 8.5 7 7"/></svg>',
-        "leaf": '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.77 10-10 10Z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></svg>'
-    }
+# [V11.3] 極簡化數據顯示 (移除 Icon，與右側統一)
+def render_stats_simple(stats):
+    html = '<div class="simple-grid">'
+    def simple_item(label, value, unit):
+        return f'<div class="simple-item"><div class="simple-label">{label}</div><div class="simple-value">{value}<span class="simple-unit">{unit}</span></div></div>'
     
-    def get_stat_html(icon, label, value, unit, color_class, bar_color, percent=0):
-        bar_html = f'<div class="bar-bg"><div class="bar-fill" style="width: {min(percent, 100)}%; background: {bar_color};"></div></div>' if percent > 0 else '<div style="height:6px; margin-top:8px"></div>'
-        return f'<div class="stat-item"><div><div class="stat-header"><div class="stat-icon {color_class}">{icons[icon]}</div>{label}</div><div style="display:flex; align-items:baseline;"><span class="stat-value">{value}</span><span class="stat-unit">{unit}</span></div></div>{bar_html}</div>'
+    html += simple_item("熱量", int(stats['cal']), "kcal")
+    html += simple_item("食物", f"{stats['food']:.1f}", "g")
+    html += simple_item("飲水", f"{stats['water']:.1f}", "ml")
+    html += simple_item("蛋白", f"{stats['prot']:.1f}", "g")
+    html += simple_item("脂肪", f"{stats['fat']:.1f}", "g")
+    html += '</div>'
+    return html
 
-    def get_tag_html(items, type_class, icon_key):
-        if not items: return '<span style="color:#5A6B8C; font-size:13px;">無</span>'
-        tags_html = ""
+# [V11.3] 藥品標籤渲染
+def render_tags_simple(supp_list, med_list):
+    def get_tag_html(items, type_class):
+        if not items: return '<span style="color:#94a3b8; font-size:12px;">無</span>'
+        html = ""
         for item in items:
-            tags_html += f'<span class="tag {type_class}">{icons[icon_key]} {item["name"]}<span class="tag-count">x{int(item["count"])}</span></span>'
-        return tags_html
-
-    # [修正] 移除這層的標題，因為外層 Expander 已經有標題了
-    return textwrap.dedent(f"""
-    <div class="dashboard-card">
-        <div class="grid-stats" style="margin-bottom: 24px;">
-            {get_stat_html("flame", "熱量", int(day_stats['cal']), "kcal", "bg-orange", "#f97316", day_stats['cal']/250)}
-            {get_stat_html("utensils", "食物", f"{day_stats['food']:.1f}", "g", "bg-blue", "#3b82f6")}
-            {get_stat_html("droplets", "飲水", f"{day_stats['water']:.1f}", "ml", "bg-cyan", "#06b6d4")}
-            {get_stat_html("beef", "蛋白質", f"{day_stats['prot']:.1f}", "g", "bg-red", "#ef4444")}
-            {get_stat_html("dna", "脂肪", f"{day_stats['fat']:.1f}", "g", "bg-yellow", "#eab308")}
-        </div>
-        
-        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px; border-top: 1px solid #f1f5f9; padding-top: 16px;">
-            <div>
-                <div style="display:flex; align-items:center; gap:6px; margin-bottom:8px; font-size:12px; font-weight:700; color:#047857; text-transform:uppercase;">
-                    保養品
-                </div>
-                <div class="tag-container">{get_tag_html(supp_list, "tag-green", "leaf")}</div>
-            </div>
-            <div style="border-left:1px solid #f1f5f9; padding-left:20px;">
-                <div style="display:flex; align-items:center; gap:6px; margin-bottom:8px; font-size:12px; font-weight:700; color:#be123c; text-transform:uppercase;">
-                    藥品
-                </div>
-                <div class="tag-container">{get_tag_html(med_list, "tag-red", "pill")}</div>
-            </div>
-        </div>
-    </div>
-    """)
-
-def render_meal_stats_simple(meal_stats):
-    return textwrap.dedent(f"""
-    <div style="display:grid; grid-template-columns: repeat(5, 1fr); gap:0; background:#FDFDF9; border:1px solid #BBBF95; border-radius:12px; padding:12px 0; margin-bottom:15px;">
-        <div class="simple-stat-item">
-            <div class="simple-label">熱量</div>
-            <div class="simple-value">{int(meal_stats['cal'])}<span class="simple-unit">kcal</span></div>
-        </div>
-        <div class="simple-stat-item">
-            <div class="simple-label">食物</div>
-            <div class="simple-value">{meal_stats['food']:.1f}<span class="simple-unit">g</span></div>
-        </div>
-        <div class="simple-stat-item">
-            <div class="simple-label">飲水</div>
-            <div class="simple-value">{meal_stats['water']:.1f}<span class="simple-unit">ml</span></div>
-        </div>
-        <div class="simple-stat-item">
-            <div class="simple-label">蛋白</div>
-            <div class="simple-value">{meal_stats['prot']:.1f}<span class="simple-unit">g</span></div>
-        </div>
-        <div class="simple-stat-item">
-            <div class="simple-label">脂肪</div>
-            <div class="simple-value">{meal_stats['fat']:.1f}<span class="simple-unit">g</span></div>
-        </div>
-    </div>
-    """)
+            html += f'<span class="tag {type_class}">{item["name"]}<span class="tag-count">x{int(item["count"])}</span></span>'
+        return html
+    
+    html = '<div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px; margin-top:0px;">'
+    # Supplements
+    html += '<div>'
+    html += '<div style="font-size:11px; font-weight:700; color:#94a3b8; margin-bottom:8px;">保養品</div>'
+    html += f'<div class="tag-container">{get_tag_html(supp_list, "tag-green")}</div>'
+    html += '</div>'
+    # Meds
+    html += '<div style="border-left:1px solid #f1f5f9; padding-left:20px;">'
+    html += '<div style="font-size:11px; font-weight:700; color:#94a3b8; margin-bottom:8px;">藥品</div>'
+    html += f'<div class="tag-container">{get_tag_html(med_list, "tag-red")}</div>'
+    html += '</div>'
+    html += '</div>'
+    return html
 
 # --- 連線設定 ---
 @st.cache_resource
@@ -457,7 +379,8 @@ def clear_finish_inputs_callback():
 inject_custom_css()
 
 # 初始化狀態
-if 'dash_open' not in st.session_state: st.session_state.dash_open = True
+if 'dash_stat_open' not in st.session_state: st.session_state.dash_stat_open = True
+if 'dash_med_open' not in st.session_state: st.session_state.dash_med_open = True
 if 'meal_open' not in st.session_state: st.session_state.meal_open = False
 if 'meal_stats_open' not in st.session_state: st.session_state.meal_stats_open = True
 if 'just_saved' not in st.session_state: st.session_state.just_saved = False
@@ -540,8 +463,14 @@ col_dash, col_input = st.columns([4, 3], gap="medium")
 
 # --- 左欄：Dashboard ---
 with col_dash:
-    with st.expander("📊 本日健康總覽", expanded=st.session_state.dash_open):
-        st.markdown(render_dashboard_content(day_stats, supp_list, med_list), unsafe_allow_html=True)
+    with st.container():
+        st.markdown(f"#### 📊 本日健康總覽")
+        # [V11.3] 拆分為兩個 Expander
+        with st.expander("📝 今日營養攝取", expanded=st.session_state.dash_stat_open):
+             st.markdown(render_stats_simple(day_stats), unsafe_allow_html=True)
+        
+        with st.expander("💊 今日保養與藥品服用", expanded=st.session_state.dash_med_open):
+             st.markdown(render_tags_simple(supp_list, med_list), unsafe_allow_html=True)
 
 # --- 右欄：操作區 ---
 with col_input:
@@ -591,7 +520,7 @@ with col_input:
         with c_bowl:
             bowl_weight = st.number_input("🥣 碗重 (g)", value=last_bowl, step=0.1, format="%.1f")
 
-        # [V11.2 修正] 歷史明細移到這裡
+        # [V11.3] 調整明細位置
         if not df_meal.empty:
             with st.expander(f"📜 查看 {meal_name} 已記錄明細"):
                 view_df = df_meal[['Item_Name', 'Net_Quantity', 'Cal_Sub', 'Time']].copy()
@@ -620,7 +549,7 @@ with col_input:
             meal_stats['fat'] = df_meal_clean['Fat_Sub'].sum()
         
         with st.expander("📊 本餐營養小計", expanded=st.session_state.meal_stats_open):
-            st.markdown(render_meal_stats_simple(meal_stats), unsafe_allow_html=True)
+            st.markdown(render_stats_simple(meal_stats), unsafe_allow_html=True)
 
         st.divider()
 
@@ -753,7 +682,8 @@ with col_input:
                         st.info(f"∑ 總計 (不含藥)：{live_sum_net:.1f} g  |  🔥 {live_sum_cal:.1f} kcal")
                     except: pass
                 
-                # [V11.2] 行動版刪除選單
+                # [V11.3] 行動版刪除功能
+                st.markdown("---")
                 delete_options = ["請選擇要刪除的項目..."] + [f"{i+1}. {row['Item_Name']} ({row['Net_Quantity']}g)" for i, row in edited_df.iterrows()]
                 del_item = st.selectbox("🗑️ 刪除項目 (行動版專用)", delete_options)
                 
