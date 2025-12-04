@@ -10,7 +10,7 @@ import uuid
 import textwrap
 
 # --- 1. 設定頁面 ---
-st.set_page_config(page_title="咪咪的飲食日記", page_icon="🐱", layout="wide")
+st.set_page_config(page_title="大文的飲食日記", page_icon="🐱", layout="wide")
 
 # --- 小工具 ---
 def safe_float(value):
@@ -197,7 +197,7 @@ def render_header(date_str):
     html = '<div class="main-header">'
     html += f'<div class="header-icon">{cat_svg}</div>'
     html += '<div>'
-    html += '<div style="font-size:24px; font-weight:800; color:#012172;">咪咪的飲食日記</div>'
+    html += '<div style="font-size:24px; font-weight:800; color:#012172;">大文的飲食日記</div>'
     html += f'<div style="font-size:15px; font-weight:500; color:#5A6B8C;">{date_str}</div>'
     html += '</div></div>'
     return html
