@@ -1,4 +1,4 @@
-# Python 程式碼 V11.5 (移除多餘 Rerun 修正版)
+# Python 程式碼 V11.6 (UI 渲染最終修復版)
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -31,7 +31,7 @@ def format_time_str(t_str):
         return f"{t_str[:2]}:{t_str[2:]}"
     return t_str if ":" in str(t_str) else get_tw_time().strftime("%H:%M")
 
-# [V7.5] 清洗重複完食紀錄工具
+# 清洗重複完食紀錄工具
 def clean_duplicate_finish_records(df):
     if df.empty: return df
     mask_finish = df['ItemID'].isin(['WASTE', 'FINISH'])
@@ -41,10 +41,11 @@ def clean_duplicate_finish_records(df):
     df_finish_clean = df_finish.drop_duplicates(subset=['Meal_Name'], keep='last')
     return pd.concat([df_others, df_finish_clean], ignore_index=True)
 
-# [V7.0] 智能權重拆分計算
+# 智能權重拆分計算
 def calculate_intake_breakdown(df):
     if df.empty: return 0.0, 0.0
     if 'Category' in df.columns: df['Category'] = df['Category'].astype(str).str.strip()
+    
     exclude_list = ['藥品', '保養品']
     df_calc = df[~df['Category'].isin(exclude_list)].copy()
     if df_calc.empty: return 0.0, 0.0
@@ -69,7 +70,7 @@ def calculate_intake_breakdown(df):
     final_food_net = input_food + (total_waste * ratio_food)
     return final_food_net, final_water_net
 
-# --- [V7.8] UI 生成函數 (HTML/CSS) ---
+# --- [V11.6] UI 生成函數 (修復 HTML 縮排問題) ---
 def render_dashboard_html(day_stats, meal_stats, supp_list, med_list):
     icons = {
         "flame": '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.1.2-2.2.6-3.3a1 1 0 0 0 2.1.7z"></path></svg>',
@@ -82,88 +83,25 @@ def render_dashboard_html(day_stats, meal_stats, supp_list, med_list):
         "activity": '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>'
     }
 
-    style = """
-    <style>
-        .dashboard-card { background: white; border-radius: 16px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border: 1px solid #f1f5f9; margin-bottom: 20px; }
-        .section-title { font-size: 16px; font-weight: 700; color: #334155; display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
-        .section-icon { padding: 6px; border-radius: 8px; display: flex; align-items: center; justify-content: center; }
-        .grid-stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
-        @media (max-width: 768px) { .grid-stats { grid-template-columns: repeat(2, 1fr); } }
-        .stat-item { background: white; border: 1px solid #f1f5f9; border-radius: 12px; padding: 12px; display: flex; flex-direction: column; justify-content: space-between; }
-        .stat-header { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; font-size: 12px; font-weight: 500; color: #64748b; }
-        .stat-icon { padding: 4px; border-radius: 6px; display: flex; align-items: center; justify-content: center; }
-        .stat-value { font-size: 20px; font-weight: 700; color: #1e293b; line-height: 1.2; }
-        .stat-unit { font-size: 12px; font-weight: 500; color: #94a3b8; margin-left: 2px; }
-        .tag-container { display: flex; flex-wrap: wrap; gap: 8px; }
-        .tag { display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 8px; font-size: 13px; font-weight: 500; border: 1px solid transparent; }
-        .tag-count { background: rgba(255,255,255,0.8); padding: 1px 5px; border-radius: 4px; font-size: 10px; font-weight: 700; margin-left: 6px; }
-        .bg-orange { background: #fff7ed; color: #f97316; }
-        .bg-blue { background: #eff6ff; color: #3b82f6; }
-        .bg-cyan { background: #ecfeff; color: #06b6d4; }
-        .bg-red { background: #fef2f2; color: #ef4444; }
-        .bg-yellow { background: #fefce8; color: #eab308; }
-        .tag-green { background: #ecfdf5; color: #047857; border-color: #d1fae5; }
-        .tag-red { background: #fff1f2; color: #be123c; border-color: #ffe4e6; }
-        .bar-bg { height: 6px; width: 100%; background: #f1f5f9; border-radius: 99px; margin-top: 10px; overflow: hidden; }
-        .bar-fill { height: 100%; border-radius: 99px; }
-    </style>
-    """
+    style = """<style>.dashboard-card { background: white; border-radius: 16px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border: 1px solid #f1f5f9; margin-bottom: 20px; }.section-title { font-size: 16px; font-weight: 700; color: #334155; display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }.section-icon { padding: 6px; border-radius: 8px; display: flex; align-items: center; justify-content: center; }.grid-stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; } @media (max-width: 768px) { .grid-stats { grid-template-columns: repeat(2, 1fr); } }.stat-item { background: white; border: 1px solid #f1f5f9; border-radius: 12px; padding: 12px; display: flex; flex-direction: column; justify-content: space-between; }.stat-header { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; font-size: 12px; font-weight: 500; color: #64748b; }.stat-icon { padding: 4px; border-radius: 6px; display: flex; align-items: center; justify-content: center; }.stat-value { font-size: 20px; font-weight: 700; color: #1e293b; line-height: 1.2; }.stat-unit { font-size: 12px; font-weight: 500; color: #94a3b8; margin-left: 2px; }.tag-container { display: flex; flex-wrap: wrap; gap: 8px; }.tag { display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 8px; font-size: 13px; font-weight: 500; border: 1px solid transparent; }.tag-count { background: rgba(255,255,255,0.8); padding: 1px 5px; border-radius: 4px; font-size: 10px; font-weight: 700; margin-left: 6px; }.bg-orange { background: #fff7ed; color: #f97316; }.bg-blue { background: #eff6ff; color: #3b82f6; }.bg-cyan { background: #ecfeff; color: #06b6d4; }.bg-red { background: #fef2f2; color: #ef4444; }.bg-yellow { background: #fefce8; color: #eab308; }.tag-green { background: #ecfdf5; color: #047857; border-color: #d1fae5; }.tag-red { background: #fff1f2; color: #be123c; border-color: #ffe4e6; }.bar-bg { height: 6px; width: 100%; background: #f1f5f9; border-radius: 99px; margin-top: 10px; overflow: hidden; }.bar-fill { height: 100%; border-radius: 99px; }</style>"""
 
     def get_stat_html(icon, label, value, unit, color_class, bar_color, percent=0):
         bar_html = f'<div class="bar-bg"><div class="bar-fill" style="width: {min(percent, 100)}%; background: {bar_color};"></div></div>' if percent > 0 else '<div style="height:6px; margin-top:10px"></div>'
-        return f"""
-<div class="stat-item">
-    <div>
-        <div class="stat-header"><div class="stat-icon {color_class}">{icons[icon]}</div>{label}</div>
-        <div style="display:flex; align-items:baseline;"><span class="stat-value">{value}</span><span class="stat-unit">{unit}</span></div>
-    </div>
-    {bar_html}
-</div>
-"""
+        return f'<div class="stat-item"><div><div class="stat-header"><div class="stat-icon {color_class}">{icons[icon]}</div>{label}</div><div style="display:flex; align-items:baseline;"><span class="stat-value">{value}</span><span class="stat-unit">{unit}</span></div></div>{bar_html}</div>'
 
     def get_tag_html(items, type_class, icon_key):
         if not items: return '<span style="color:#94a3b8; font-size:13px;">無</span>'
         html = ""
         for item in items:
-            html += f"""<span class="tag {type_class}">{icons[icon_key]} {item['name']}<span class="tag-count">x{int(item['count'])}</span></span>"""
+            html += f'<span class="tag {type_class}">{icons[icon_key]} {item["name"]}<span class="tag-count">x{int(item["count"])}</span></span>'
         return html
 
-    daily_html = f"""
-<div class="dashboard-card">
-    <div class="section-title"><div class="section-icon bg-orange">{icons['activity']}</div>本日總計</div>
-    <div class="grid-stats">
-        {get_stat_html("flame", "熱量", int(day_stats['cal']), "kcal", "bg-orange", "#f97316", day_stats['cal']/250)}
-        {get_stat_html("utensils", "食物", f"{day_stats['food']:.1f}", "g", "bg-blue", "#3b82f6")}
-        {get_stat_html("droplets", "飲水", f"{day_stats['water']:.1f}", "ml", "bg-cyan", "#06b6d4")}
-        {get_stat_html("beef", "蛋白質", f"{day_stats['prot']:.1f}", "g", "bg-red", "#ef4444")}
-        {get_stat_html("dna", "脂肪", f"{day_stats['fat']:.1f}", "g", "bg-yellow", "#eab308")}
-    </div>
-</div>
-"""
-    meal_html = f"""
-<div class="dashboard-card">
-    <div class="section-title">
-        <div class="section-icon bg-blue">{icons['utensils']}</div>本餐小計
-        <span style="margin-left:auto; font-size:12px; background:#eff6ff; color:#3b82f6; padding:2px 8px; border-radius:99px; font-weight:600;">{meal_stats['name']}</span>
-    </div>
-    <div class="grid-stats">
-        {get_stat_html("flame", "熱量", int(meal_stats['cal']), "kcal", "bg-orange", "#f97316")}
-        {get_stat_html("utensils", "食物", f"{meal_stats['food']:.1f}", "g", "bg-blue", "#3b82f6")}
-        {get_stat_html("droplets", "飲水", f"{meal_stats['water']:.1f}", "ml", "bg-cyan", "#06b6d4")}
-        {get_stat_html("beef", "蛋白質", f"{meal_stats['prot']:.1f}", "g", "bg-red", "#ef4444")}
-        {get_stat_html("dna", "脂肪", f"{meal_stats['fat']:.1f}", "g", "bg-yellow", "#eab308")}
-    </div>
-</div>
-"""
-    supp_med_html = f"""
-<div class="dashboard-card">
-    <div class="section-title"><div class="section-icon bg-green" style="background:#ecfdf5; color:#047857;">{icons['pill']}</div>保養與藥品紀錄</div>
-    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px;">
-        <div><div style="font-size:11px; font-weight:700; color:#94a3b8; margin-bottom:8px; text-transform:uppercase;">保養品清單</div><div class="tag-container">{get_tag_html(supp_list, "tag-green", "leaf")}</div></div>
-        <div><div style="font-size:11px; font-weight:700; color:#94a3b8; margin-bottom:8px; text-transform:uppercase;">藥品清單</div><div class="tag-container">{get_tag_html(med_list, "tag-red", "pill")}</div></div>
-    </div>
-</div>
-"""
+    daily_html = f'<div class="dashboard-card"><div class="section-title"><div class="section-icon bg-orange">{icons["activity"]}</div>本日總計</div><div class="grid-stats">{get_stat_html("flame", "熱量", int(day_stats["cal"]), "kcal", "bg-orange", "#f97316", day_stats["cal"]/250)}{get_stat_html("utensils", "食物", f"{day_stats["food"]:.1f}", "g", "bg-blue", "#3b82f6")}{get_stat_html("droplets", "飲水", f"{day_stats["water"]:.1f}", "ml", "bg-cyan", "#06b6d4")}{get_stat_html("beef", "蛋白質", f"{day_stats["prot"]:.1f}", "g", "bg-red", "#ef4444")}{get_stat_html("dna", "脂肪", f"{day_stats["fat"]:.1f}", "g", "bg-yellow", "#eab308")}</div></div>'
+    
+    meal_html = f'<div class="dashboard-card"><div class="section-title"><div class="section-icon bg-blue">{icons["utensils"]}</div>本餐小計<span style="margin-left:auto; font-size:12px; background:#eff6ff; color:#3b82f6; padding:2px 8px; border-radius:99px; font-weight:600;">{meal_stats["name"]}</span></div><div class="grid-stats">{get_stat_html("flame", "熱量", int(meal_stats["cal"]), "kcal", "bg-orange", "#f97316")}{get_stat_html("utensils", "食物", f"{meal_stats["food"]:.1f}", "g", "bg-blue", "#3b82f6")}{get_stat_html("droplets", "飲水", f"{meal_stats["water"]:.1f}", "ml", "bg-cyan", "#06b6d4")}{get_stat_html("beef", "蛋白質", f"{meal_stats["prot"]:.1f}", "g", "bg-red", "#ef4444")}{get_stat_html("dna", "脂肪", f"{meal_stats["fat"]:.1f}", "g", "bg-yellow", "#eab308")}</div></div>'
+    
+    supp_med_html = f'<div class="dashboard-card"><div class="section-title"><div class="section-icon bg-green" style="background:#ecfdf5; color:#047857;">{icons["pill"]}</div>保養與藥品紀錄</div><div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px;"><div><div style="font-size:11px; font-weight:700; color:#94a3b8; margin-bottom:8px; text-transform:uppercase;">保養品清單</div><div class="tag-container">{get_tag_html(supp_list, "tag-green", "leaf")}</div></div><div><div style="font-size:11px; font-weight:700; color:#94a3b8; margin-bottom:8px; text-transform:uppercase;">藥品清單</div><div class="tag-container">{get_tag_html(med_list, "tag-red", "pill")}</div></div></div></div>'
+
     return style + daily_html + meal_html + supp_med_html
 
 # --- 連線設定 ---
@@ -280,6 +218,7 @@ def add_to_cart_callback(bowl_w, last_ref_w, last_ref_n):
     st.session_state.meal_open = False
     st.session_state.just_saved = True
 
+# [V11.5 修正] 移除 st.rerun()
 def save_finish_callback(finish_type, waste_net, waste_cal, bowl_w, meal_n, finish_time_str, record_date_obj):
     if finish_type == "有剩餘 (需秤重)" and waste_net <= 0:
         st.session_state.finish_error = "剩餘重量計算錯誤，請檢查輸入數值。"
@@ -332,9 +271,8 @@ def save_finish_callback(finish_type, waste_net, waste_cal, bowl_w, meal_n, fini
         st.session_state.waste_gross = None
         st.session_state.waste_tare = None
         st.session_state.finish_error = None
-        
         st.session_state.just_saved = True
-        # [修正 V11.5] 移除 st.rerun()，讓 Streamlit 自動重整
+        # st.rerun() <--- 已移除
     except Exception as e:
         st.session_state.finish_error = f"寫入失敗：{e}"
 
@@ -347,15 +285,16 @@ def clear_finish_inputs_callback():
 # ==========================================
 st.title("🐱 大文餵食紀錄")
 
-# 初始化狀態
 if 'dash_open' not in st.session_state: st.session_state.dash_open = True
 if 'meal_open' not in st.session_state: st.session_state.meal_open = False
 if 'just_saved' not in st.session_state: st.session_state.just_saved = False
 if 'finish_radio' not in st.session_state: st.session_state.finish_radio = "全部吃光 (盤光光)"
 if 'nav_mode' not in st.session_state: st.session_state.nav_mode = "➕ 新增食物/藥品"
 if 'finish_error' not in st.session_state: st.session_state.finish_error = None
+if 'pending_meal' in st.session_state:
+    st.session_state.meal_selector = st.session_state.pending_meal
+    del st.session_state.pending_meal
 
-# 自動捲動
 if st.session_state.just_saved:
     js = """
     <script>
@@ -497,7 +436,6 @@ if not df_meal.empty:
     meal_stats['prot'] = df_meal_clean['Prot_Sub'].sum()
     meal_stats['fat'] = df_meal_clean['Fat_Sub'].sum()
 
-# 渲染 HTML Dashboard (包含 unsafe_allow_html=True)
 html_content = render_dashboard_html(day_stats, meal_stats, supp_list, med_list)
 dashboard_ph.markdown(html_content, unsafe_allow_html=True)
 
