@@ -437,7 +437,7 @@ def save_finish_callback(finish_type, waste_net, waste_cal, bowl_w, meal_n, fini
         load_data.clear()
         clear_finish_inputs_callback()
         st.session_state.just_saved = True
-        st.rerun()
+        # st.rerun()
     except Exception as e:
         st.session_state.finish_error = f"寫入失敗：{e}"
 
