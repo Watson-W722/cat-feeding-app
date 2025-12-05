@@ -818,7 +818,7 @@ with col_input:
                                     next_meal = meal_options[curr_idx + 1]
                                 else: 
                                     next_meal = meal_name
-                                st.session_state.meal_selector = next_meal
+                                st.session_state.pending_meal = next_meal
                             # 收合 Dashboard
                             st.session_state.dash_stat_open = False
                             st.session_state.dash_med_open = False
