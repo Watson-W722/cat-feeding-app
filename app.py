@@ -8,37 +8,6 @@ from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime, timedelta, timezone
 import uuid
 import textwrap
-# 在程式開頭加入配置區
-# ==========================================
-#      配置常數區
-# ==========================================
-class Config:
-    """應用程式配置常數"""
-    # UI 常數
-    MEAL_OPTIONS = ["第一餐", "第二餐", "第三餐", "第四餐", "第五餐", 
-                    "第六餐", "第七餐", "第八餐", "第九餐", "第十餐", "點心"]
-    
-    # 單位類型
-    COUNT_UNITS = ["顆", "粒", "錠", "膠囊", "次"]
-    WEIGHT_UNIT = "g"
-    
-    # 排除類別
-    EXCLUDE_CATEGORIES = ['藥品', '保養品']
-    WATER_CATEGORIES = ['水', '飲用水']
-    
-    # 特殊 ItemID
-    SPECIAL_ITEM_IDS = ['WASTE', 'FINISH']
-    
-    # 預設值
-    DEFAULT_BOWL_WEIGHT = 30.0
-    SCROLL_DELAY_MS = 300
-    
-    # 快取設定
-    DATA_CACHE_TTL = 5  # 秒
-
-# 使用範例：
-# if unit in Config.COUNT_UNITS:
-# if category in Config.EXCLUDE_CATEGORIES:
 
 # --- 1. 設定頁面 ---
 st.set_page_config(page_title="大文的飲食日記", page_icon="🐱", layout="wide")
@@ -603,10 +572,12 @@ with col_dash:
 
 # --- 右欄：操作區 ---
 with col_input:
-    meal_options = Config.MEAL_OPTIONS  # 取得配置的餐別選項
     recorded_meals = []
     if not df_today.empty:
         recorded_meals = df_today['Meal_Name'].unique().tolist()
+
+    meal_options = ["第一餐", "第二餐", "第三餐", "第四餐", "第五餐", 
+                    "第六餐", "第七餐", "第八餐", "第九餐", "第十餐", "點心"]
 
     default_meal_name = meal_options[0]
     for m in meal_options:
