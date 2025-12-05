@@ -381,10 +381,16 @@ def add_to_cart_callback(bowl_w, last_ref_w, last_ref_n):
         "Phos_Sub": phos,
         "Unit": unit
     })
-    
+
+    # 重置輸入
     st.session_state.scale_val = None
     st.session_state.check_zero = False
-    st.session_state.meal_open = False
+    # 確保 Dashboard 區塊收合
+    st.session_state.dash_stat_open = False
+    st.session_state.dash_med_open = False
+    st.session_state.meal_stats_open = False
+    # st.session_state.meal_open = False
+    # 觸發捲動
     st.session_state.just_saved = True
 
 def save_finish_callback(finish_type, waste_net, waste_cal, bowl_w, meal_n, finish_time_str, record_date_obj):
@@ -453,21 +459,38 @@ def clear_finish_inputs_callback():
 inject_custom_css()
 
 # 初始化狀態
-if 'dash_stat_open' not in st.session_state: st.session_state.dash_stat_open = True
-if 'dash_med_open' not in st.session_state: st.session_state.dash_med_open = True
+if 'dash_stat_open' not in st.session_state: st.session_state.dash_stat_open = False  # 改為 False
+if 'dash_med_open' not in st.session_state: st.session_state.dash_med_open = False  # 改為 False
 if 'meal_open' not in st.session_state: st.session_state.meal_open = False
-if 'meal_stats_open' not in st.session_state: st.session_state.meal_stats_open = True
+if 'meal_stats_open' not in st.session_state: st.session_state.meal_stats_open = False  # 改為 False
 if 'just_saved' not in st.session_state: st.session_state.just_saved = False
 if 'finish_radio' not in st.session_state: st.session_state.finish_radio = "全部吃光 (盤光光)"
 if 'nav_mode' not in st.session_state: st.session_state.nav_mode = "➕ 新增食物/藥品"
 if 'finish_error' not in st.session_state: st.session_state.finish_error = None
 
-# 自動捲動
+# 自自動捲動到編輯區
 if st.session_state.just_saved:
+    # 使用更精確的捲動方式,定位到右欄編輯區
     js = """
     <script>
-        var body = window.parent.document.querySelector(".main");
-        body.scrollTop = 0;
+        setTimeout(function() {
+            // 找到右欄容器 (通常是第二個 column)
+            var columns = window.parent.document.querySelectorAll('[data-testid="column"]');
+            if (columns.length >= 2) {
+                var rightCol = columns[1];
+                // 捲動到右欄頂部
+                rightCol.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                
+                // 也確保主容器不會擋住視線
+                var main = window.parent.document.querySelector(".main");
+                if (main && rightCol) {
+                    var rect = rightCol.getBoundingClientRect();
+                    if (rect.top < 100) {  // 如果太靠近頂部,稍微往下滾一點
+                        main.scrollTop = main.scrollTop + rect.top - 120;
+                    }
+                }
+            }
+        }, 300);  // 延遲確保 DOM 已更新
     </script>
     """
     components.html(js, height=0)
@@ -788,12 +811,18 @@ with col_input:
                             sheet_log.append_rows(rows)
                             st.toast("✅ 寫入成功！")
                             st.session_state.cart = []
-                            next_index = 0
+                            #next_index = 0
                             if meal_name in meal_options:
                                 curr_idx = meal_options.index(meal_name)
-                                if curr_idx < len(meal_options) - 1: next_index = curr_idx + 1
-                                else: next_index = curr_idx
-                            st.session_state.pending_meal = meal_options[next_index]
+                                if curr_idx < len(meal_options) - 1: 
+                                    next_meal = meal_options[curr_idx + 1]
+                                else: 
+                                    next_meal = meal_name
+                                st.session_state.meal_selector = next_meal
+                            # 收合 Dashboard
+                            st.session_state.dash_stat_open = False
+                            st.session_state.dash_med_open = False
+                            st.session_state.meal_stats_open = False
                             load_data.clear()
                             st.session_state.just_saved = True
                             st.rerun()
