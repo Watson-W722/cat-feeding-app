@@ -602,7 +602,6 @@ with col_dash:
              st.markdown(render_supp_med_html(supp_list, med_list), unsafe_allow_html=True)
 
 # --- 右欄：操作區 ---
-if meal_options in Config.MEAL_OPTIONS:
 with col_input:
     meal_options = Config.MEAL_OPTIONS  # 取得配置的餐別選項
     recorded_meals = []
