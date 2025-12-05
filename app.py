@@ -609,12 +609,11 @@ with col_input:
 
     # if unit in Config.COUNT_UNITS:
     if meal_options in Config.MEAL_OPTIONS:
-
-    default_meal_name = meal_options[0]
-    for m in meal_options:
-        if m not in recorded_meals:
-            default_meal_name = m
-            break
+        default_meal_name = meal_options[0]
+        for m in meal_options:
+            if m not in recorded_meals:
+                default_meal_name = m
+                break
             
     if 'meal_selector' not in st.session_state:
         st.session_state.meal_selector = default_meal_name
