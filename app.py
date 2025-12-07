@@ -635,7 +635,7 @@ with col_input:
                     key="cart_editor"
                 )
 
-                if not edited df.empty:
+                if not edited_df.empty:
                     try:
                         edited_df['Net_Quantity'] = pd.to_numeric(edited_df['Net_Quantity'], errors = 'coerce').fillna(0)
                         edited_df['Cal_Sub'] = pd.to_numeric(edited_df['Cal_Sub'], errors='coerce').fillna(0)
