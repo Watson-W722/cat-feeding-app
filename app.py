@@ -634,6 +634,17 @@ with col_input:
                     num_rows="dynamic",
                     key="cart_editor"
                 )
+
+                if not edited df.empty:
+                    try:
+                        edited_df['Net_Quantity'] = pd.to_numeric(edited_df['Net_Quantity'], errors = 'coerce').fillna(0)
+                        edited_df['Cal_Sub'] = pd.to_numeric(edited_df['Cal_Sub'], errors='coerce').fillna(0)
+                        mask_total = ~edited_df['Category'].isin(['藥品', '保養品'])
+                        live_sum_net = edited_df[mask_total]['Net_Quantity'].sum()
+                        live_sum_cal = edited_df['Cal_Sub'].sum()
+                        st.info(f"∑ 總計 (不含藥)：{live_sum_net:.1f} g  |  🔥 {live_sum_cal:.1f} kcal")
+                    except: pass
+
                 
                 # 刪除選單
                 delete_options = ["請選擇要刪除的項目..."] + [f"{i+1}. {row['Item_Name']} ({row['Net_Quantity']}g)" for i, row in edited_df.iterrows()]
