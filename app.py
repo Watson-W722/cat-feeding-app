@@ -439,9 +439,7 @@ with col_dash:
 
 # --- 右欄：操作區 ---
 with col_input:
-    # 建立一個錨點 div，供 JS 捲動使用
-    st.markdown('<div id="input-anchor"></div>', unsafe_allow_html=True)
-    
+   
     recorded_meals = []
     if not df_today.empty:
         recorded_meals = df_today['Meal_Name'].unique().tolist()
@@ -517,6 +515,8 @@ with col_input:
 
         st.divider()
 
+        # 建立一個錨點 div，供 JS 捲動使用
+        st.markdown('<div id="input-anchor"></div>', unsafe_allow_html=True)
         nav_mode = st.radio(
             "操作模式", 
             ["➕ 新增食物/藥品", "🏁 完食/紀錄剩餘"], 
