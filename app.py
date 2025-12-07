@@ -188,7 +188,7 @@ def reset_meal_inputs():
     st.session_state.waste_tare = None
     st.session_state.finish_radio = "全部吃光 (盤光光)"
 
-def add_to_cart_callback(bowl_w, last_ref_w, last_ref_n):
+def add_to_cart_callback(bowl_w, last_ref_w, last_ref_n):   
     category = st.session_state.get('cat_select', '請選擇...')
     item_name = st.session_state.get('item_select', '請先選類別')
     raw_scale = st.session_state.get('scale_val')
@@ -235,6 +235,9 @@ def add_to_cart_callback(bowl_w, last_ref_w, last_ref_n):
         prot = net_weight * prot_val / 100
         fat = net_weight * fat_val / 100
         phos = net_weight * phos_val / 100
+
+    # [新增/修正] 為了確保重整後不跳餐，明確鎖定 session_state
+    current_meal = st.session_state.meal_selector
 
     st.session_state.cart.append({
         "Category": cat_real,
@@ -351,13 +354,15 @@ if 'finish_error' not in st.session_state: st.session_state.finish_error = None
 scroll_js = """
 <script>
     function smoothScroll() {
+        // 嘗試抓取錨點元素
         var element = window.parent.document.getElementById("input-anchor");
         if (element) {
+            // block: 'start' 代表捲動到該元素的頂部
             element.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
     }
-    // 稍微延遲以確保 DOM 載入
-    setTimeout(smoothScroll, 300);
+    // 增加延遲至 500 毫秒，等待 DOM 結構穩定
+    setTimeout(smoothScroll, 500);
 </script>
 """
 
@@ -515,8 +520,10 @@ with col_input:
 
         st.divider()
 
-        # 建立一個錨點 div，供 JS 捲動使用
-        st.markdown('<div id="input-anchor"></div>', unsafe_allow_html=True)
+        # [修正] 錨點放置於此，緊鄰 radio button
+        # 使用空的 div 並給予 id，高度設為 0 避免佔位，margin-top 做一點負值微調位置
+        st.markdown('<div id="input-anchor" style="height:0px; margin-top:-10px;"></div>', unsafe_allow_html=True)
+
         nav_mode = st.radio(
             "操作模式", 
             ["➕ 新增食物/藥品", "🏁 完食/紀錄剩餘"], 
@@ -680,6 +687,10 @@ with col_input:
                             st.session_state.dash_stat_open = False
                             st.session_state.dash_med_open = False
                             st.session_state.meal_stats_open = False
+                            
+                            # [關鍵修正] 這裡也要鎖定餐別
+                            st.session_state.meal_selector = meal_name 
+
                             load_data.clear()
                             st.session_state.just_saved = True # 觸發捲動
                             st.rerun()
