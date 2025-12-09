@@ -68,35 +68,141 @@ def calculate_intake_breakdown(df):
     final_food_net = input_food + (total_waste * ratio_food)
     return final_food_net, final_water_net
 
-# --- CSS 注入 ---
+# [V11.7.1] CSS 注入 (針對手機跑版與深色模式修復)
 def inject_custom_css():
     st.markdown("""
     <style>
-        :root { --navy: #012172; --beige: #BBBF95; --bg: #F8FAFC; --text-muted: #5A6B8C; }
-        .stApp { background-color: var(--bg); font-family: 'Segoe UI', sans-serif; color: var(--navy); }
-        .block-container { padding-top: 1rem; padding-bottom: 5rem; }
-        h4 { font-size: 20px !important; font-weight: 700 !important; color: var(--navy) !important; padding-bottom: 0.5rem; margin-bottom: 0rem; }
-        div[data-testid="stVerticalBlock"] > div[style*="background-color"] {
-            background: white; border-radius: 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.04);
-            border: 1px solid rgba(1, 33, 114, 0.1); padding: 24px;
+        :root { 
+            --navy: #012172;
+            --beige: #BBBF95;
+            --bg: #F8FAFC;
+            --text-muted: #5A6B8C;
         }
+        
+        /* 1. 全域強制設定：不管手機是深色或淺色模式，背景強制淺色，文字強制深藍 */
+        .stApp { 
+            background-color: var(--bg); 
+            font-family: 'Segoe UI', sans-serif; 
+            color: var(--navy); 
+        }
+        
+        /* 強制覆蓋 Streamlit 深色模式下的預設文字顏色 */
+        .stMarkdown, .stRadio label, .stNumberInput label, .stSelectbox label, .stTextInput label, p, h1, h2, h3, h4, h5, h6, span, div {
+            color: var(--navy) !important;
+        }
+        
+        /* 特別處理輸入框內部的顏色 */
+        .stNumberInput input, .stTextInput input, .stSelectbox div[data-baseweb="select"] {
+            color: var(--navy) !important;
+            background-color: #ffffff !important; /* 強制白底 */
+        }
+        
+        /* 修正 Radio Button 選項文字在深色模式下消失的問題 */
+        div[data-testid="stRadio"] label p {
+            color: var(--navy) !important;
+        }
+
+        .block-container { padding-top: 1rem; padding-bottom: 5rem; }
+        
+        /* 標題樣式 */
+        h4 {
+            font-size: 20px !important;
+            font-weight: 700 !important;
+            color: var(--navy) !important;
+            padding-bottom: 0.5rem;
+            margin-bottom: 0rem;
+        }
+
+        /* 容器樣式 */
+        div[data-testid="stVerticalBlock"] > div[style*="background-color"] {
+            background: white; border-radius: 16px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+            border: 1px solid rgba(1, 33, 114, 0.1);
+            padding: 24px;
+        }
+
+        /* 數據網格 */
         .grid-row-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px; }
         .grid-row-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 0px; }
-        .stat-item { background: #fff; border: 2px solid #e2e8f0; border-radius: 12px; padding: 16px 12px; display: flex; flex-direction: column; align-items: center; text-align: center; }
-        .stat-header { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; font-size: 14px; font-weight: 700; color: var(--text-muted) !important; text-transform: uppercase; }
-        .stat-value { font-size: 32px; font-weight: 900; color: var(--navy) !important; line-height: 1.1; }
+        
+        /* 2. iPhone/手機版面優化：螢幕小於 640px 時自動縮小字體與間距 */
+        @media (max-width: 640px) { 
+            .grid-row-3 { gap: 6px; } /* 縮小卡片間距 */
+            .stat-item { padding: 10px 4px !important; } /* 縮小卡片內距 */
+            .stat-value { font-size: 24px !important; } /* 縮小數字字體 (原本32px) */
+            .stat-header { font-size: 12px !important; } /* 縮小標題字體 */
+            
+            /* 讓容器內距也小一點，爭取空間 */
+            div[data-testid="stVerticalBlock"] > div[style*="background-color"] {
+                padding: 16px;
+            }
+        }
+
+        /* 數據單項 */
+        .stat-item { 
+            background: #fff; 
+            border: 2px solid #e2e8f0; 
+            border-radius: 12px; 
+            padding: 16px 12px; 
+            display: flex; flex-direction: column; align-items: center; text-align: center;
+        }
+        
+        .stat-header { 
+            display: flex; align-items: center; gap: 6px; margin-bottom: 8px; 
+            font-size: 14px; font-weight: 700; color: var(--text-muted) !important; text-transform: uppercase; 
+        }
+        
+        .stat-value { 
+            font-size: 32px; font-weight: 900; color: var(--navy) !important; line-height: 1.1; 
+        }
         .stat-unit { font-size: 14px; font-weight: 600; color: var(--text-muted) !important; margin-left: 2px; }
-        .simple-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0; background: #FDFDF9; border: 1px solid var(--beige); border-radius: 12px; padding: 10px 0; margin-bottom: 15px; width: 100%; }
-        .simple-item { text-align: center; padding: 0 2px; border-right: 1px solid rgba(1, 33, 114, 0.1); }
+        
+        /* 右欄小計 */
+        .simple-grid {
+            display: grid; grid-template-columns: repeat(5, 1fr); gap: 0;
+            background: #FDFDF9; border: 1px solid var(--beige);
+            border-radius: 12px; padding: 10px 0; margin-bottom: 15px;
+            width: 100%;
+        }
+        .simple-item {
+            text-align: center; padding: 0 2px;
+            border-right: 1px solid rgba(1, 33, 114, 0.1);
+        }
         .simple-item:last-child { border-right: none; }
         .simple-label { font-size: 11px; color: var(--text-muted) !important; font-weight: 700; }
         .simple-value { font-size: 16px; color: var(--navy) !important; font-weight: 800; }
+        .simple-unit { font-size: 10px; color: var(--text-muted) !important; margin-left: 1px; }
+
+        /* Tags */
         .tag-container { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
-        .tag { display: inline-flex; align-items: center; padding: 6px 12px; border-radius: 8px; font-size: 14px; font-weight: 600; border: 1px solid transparent; color: var(--navy) !important; }
-        .tag-count { background: rgba(255,255,255,0.8); padding: 0px 6px; border-radius: 4px; font-size: 12px; font-weight: 800; margin-left: 6px; color: var(--navy) !important; }
-        .bg-orange { background: #fff7ed; color: #f97316; } .bg-blue { background: #eff6ff; color: #3b82f6; } .bg-cyan { background: #ecfeff; color: #06b6d4; } .bg-red { background: #fef2f2; color: #ef4444; } .bg-yellow { background: #fefce8; color: #eab308; }
-        .tag-green { background: #ecfdf5; border: 1px solid #d1fae5; color: #047857 !important; } .tag-red { background: #fff1f2; border: 1px solid #ffe4e6; color: #be123c !important; }
-        .main-header { display: flex; align-items: center; gap: 12px; margin-top: 5px; margin-bottom: 24px; padding: 20px; background: white; border-radius: 16px; border: 1px solid rgba(1, 33, 114, 0.1); box-shadow: 0 4px 6px rgba(0,0,0,0.02); }
+        .tag { 
+            display: inline-flex; align-items: center; padding: 6px 12px; 
+            border-radius: 8px; font-size: 14px; font-weight: 600; 
+            border: 1px solid transparent; color: var(--navy) !important;
+        }
+        .tag-count { 
+            background: rgba(255,255,255,0.8); padding: 0px 6px; 
+            border-radius: 4px; font-size: 12px; font-weight: 800; margin-left: 6px; 
+            color: var(--navy) !important;
+        }
+        
+        /* Colors */
+        .bg-orange { background: #fff7ed; color: #f97316; }
+        .bg-blue { background: #eff6ff; color: #3b82f6; }
+        .bg-cyan { background: #ecfeff; color: #06b6d4; }
+        .bg-red { background: #fef2f2; color: #ef4444; }
+        .bg-yellow { background: #fefce8; color: #eab308; }
+        .tag-green { background: #ecfdf5; border: 1px solid #d1fae5; color: #047857 !important; }
+        .tag-red { background: #fff1f2; border: 1px solid #ffe4e6; color: #be123c !important; }
+        
+        /* Header */
+        .main-header { 
+            display: flex; align-items: center; gap: 12px; 
+            margin-top: 5px; margin-bottom: 24px; 
+            padding: 20px; background: white; border-radius: 16px; 
+            border: 1px solid rgba(1, 33, 114, 0.1);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.02); 
+        }
         .header-icon { background: var(--navy); padding: 12px; border-radius: 12px; color: white !important; display: flex; }
     </style>
     """, unsafe_allow_html=True)
