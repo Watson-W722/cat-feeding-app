@@ -277,6 +277,7 @@ def lock_meal_state():
     if 'meal_selector' in st.session_state:
         st.session_state.meal_selector = st.session_state.meal_selector
 
+# [修正] 針對 save_finish_callback 增加刪除條件的嚴謹度
 def save_finish_callback(finish_type, waste_net, waste_cal, bowl_w, meal_n, finish_time_str, finish_date_obj, record_date_obj):
     if finish_type == "有剩餘 (需秤重)" and waste_net <= 0:
         st.session_state.finish_error = "剩餘重量計算錯誤，請檢查輸入數值。"
@@ -295,11 +296,12 @@ def save_finish_callback(finish_type, waste_net, waste_cal, bowl_w, meal_n, fini
     item_id_code = "WASTE" if finish_type == "有剩餘 (需秤重)" else "FINISH"
     category_code = "剩食" if finish_type == "有剩餘 (需秤重)" else "完食"
 
+    # 注意：這裡固定寫入 Item_Name 為 "完食紀錄"，這將成為我們識別系統紀錄的關鍵
     row = [
         str(uuid.uuid4()), 
-        timestamp,         # 真實發生時間
-        str_date_for_db,   # 歸屬日期
-        str_time_finish,   # 時間字串
+        timestamp,         
+        str_date_for_db,   
+        str_time_finish,   
         meal_n,
         item_id_code, category_code, 0, bowl_w, 
         final_waste_net, final_waste_cal, 
@@ -314,15 +316,25 @@ def save_finish_callback(finish_type, waste_net, waste_cal, bowl_w, meal_n, fini
             date_idx = header.index('Date')
             meal_idx = header.index('Meal_Name')
             item_idx = header.index('ItemID')
+            # [修正] 取得 Item_Name 的欄位位置 (通常是 15)
+            name_idx = header.index('Item_Name') 
         except ValueError:
-            date_idx = 2; meal_idx = 4; item_idx = 5
+            # Fallback (如果欄位沒對齊)
+            date_idx = 2; meal_idx = 4; item_idx = 5; name_idx = 15
 
         rows_to_delete = []
         for i in range(len(current_data) - 1, 0, -1):
             r = current_data[i]
+            # [修正] 刪除條件變得更嚴謹：
+            # 1. 日期相同
+            # 2. 餐別相同
+            # 3. ID 是 WASTE 或 FINISH
+            # 4. (新增) 品名必須是 "完食紀錄" <-- 這能保護您自己加入的食材不被刪除
             if (r[date_idx] == str_date_for_db and 
                 r[meal_idx] == meal_n and 
-                r[item_idx] in ['WASTE', 'FINISH']):
+                r[item_idx] in ['WASTE', 'FINISH'] and 
+                len(r) > name_idx and r[name_idx] == "完食紀錄"):
+                
                 rows_to_delete.append(i + 1)
         
         for r_idx in rows_to_delete:
@@ -331,13 +343,13 @@ def save_finish_callback(finish_type, waste_net, waste_cal, bowl_w, meal_n, fini
         sheet_log.append_row(row)
         st.toast("✅ 完食紀錄已更新")
         
-        # [微調] 在回調中鎖定餐別 (因為是 on_click 安全的)
+        # 鎖定餐別
         st.session_state.meal_selector = meal_n
         
         load_data.clear()
         clear_finish_inputs_callback()
         st.session_state.just_saved = True
-        st.rerun() # 解除註解，讓介面即時更新
+        st.rerun() 
     except Exception as e:
         st.session_state.finish_error = f"寫入失敗：{e}"
 
