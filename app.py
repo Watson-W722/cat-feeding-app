@@ -197,6 +197,64 @@ def reset_meal_inputs():
     st.session_state.waste_tare = None
     st.session_state.finish_radio = "全部吃光 (盤光光)"
 
+# [新增] 動態計算上一餐剩食的營養密度
+def get_previous_meal_density(df_log):
+    if df_log.empty: return None
+    
+    # 1. 找到最近一筆 "WASTE" (有剩餘) 的紀錄
+    # 先確保有 Timestamp 欄位並排序
+    try:
+        df_log['Timestamp_dt'] = pd.to_datetime(df_log['Timestamp'], errors='coerce')
+        df_waste = df_log[df_log['ItemID'] == 'WASTE'].copy()
+        
+        if df_waste.empty: return None
+        
+        # 取得最後一筆 (最近的) 剩餘紀錄
+        last_waste = df_waste.sort_values('Timestamp_dt').iloc[-1]
+        target_date = last_waste['Date']
+        target_meal = last_waste['Meal_Name']
+        
+        # 2. 撈取那一餐的所有食材 (Input)
+        mask_meal = (df_log['Date'] == target_date) & (df_log['Meal_Name'] == target_meal)
+        df_target = df_log[mask_meal].copy()
+        
+        # 排除藥品、保養品、以及 WASTE/FINISH 結算列
+        exclude_cats = ['藥品', '保養品']
+        exclude_items = ['WASTE', 'FINISH']
+        
+        # 確保數值型態
+        for col in ['Net_Quantity', 'Cal_Sub', 'Prot_Sub', 'Fat_Sub', 'Phos_Sub']:
+            df_target[col] = pd.to_numeric(df_target[col], errors='coerce').fillna(0)
+            
+        # 篩選出食材 (Net_Quantity > 0 代表投入的食材)
+        mask_valid = (
+            ~df_target['Category'].isin(exclude_cats) & 
+            ~df_target['ItemID'].isin(exclude_items) &
+            (df_target['Net_Quantity'] > 0)
+        )
+        
+        df_foods = df_target[mask_valid]
+        
+        if df_foods.empty: return None
+        
+        # 3. 計算平均密度 (每 1g 含有多少營養)
+        total_weight = df_foods['Net_Quantity'].sum()
+        
+        if total_weight <= 0: return None
+        
+        density = {
+            'cal': df_foods['Cal_Sub'].sum() / total_weight,
+            'prot': df_foods['Prot_Sub'].sum() / total_weight,
+            'fat': df_foods['Fat_Sub'].sum() / total_weight,
+            'phos': df_foods['Phos_Sub'].sum() / total_weight,
+            'info': f"依據 {target_date} {target_meal}" # 供顯示用
+        }
+        return density
+        
+    except Exception as e:
+        print(f"Error calc density: {e}")
+        return None
+
 def add_to_cart_callback(bowl_w, last_ref_w, last_ref_n):   
     category = st.session_state.get('cat_select', '請選擇...')
     item_name = st.session_state.get('item_select', '請先選類別')
@@ -227,10 +285,28 @@ def add_to_cart_callback(bowl_w, last_ref_w, last_ref_n):
 
     item_id = item_map.get(item_name, "")
     cat_real = cat_map.get(item_name, "")
+
+
+    # [修正] 預設從 DB 讀取數值
     cal_val = safe_float(cal_map.get(item_name, 0))
     prot_val = safe_float(prot_map.get(item_name, 0))
     fat_val = safe_float(fat_map.get(item_name, 0))
     phos_val = safe_float(phos_map.get(item_name, 0))
+
+     # [新增] 判斷是否為 "LEFTOVER"，如果是，動態計算上一餐密度
+    if item_id == "LEFTOVER":
+        density_data = get_previous_meal_density(df_log)
+        if density_data:
+            # 覆蓋原本的查表數值 (注意：這裡算出的是每 1g 的數值，而 DB 通常是每 100g)
+            # 因為下面的公式是 net_weight * cal_val / 100
+            # 所以我們要先把密度 * 100 轉回 "每 100g" 的格式，才能套用原本公式
+            cal_val = density_data['cal'] * 100
+            prot_val = density_data['prot'] * 100
+            fat_val = density_data['fat'] * 100
+            phos_val = density_data['phos'] * 100
+            st.toast(f"🔍 已自動代入 {density_data['info']} 的營養密度")
+        else:
+            st.warning("⚠️ 找不到上一餐的剩餘紀錄，將使用預設數值 (可能為 0)")
 
     if unit in ["顆", "粒", "錠", "膠囊", "次"]:
         cal = net_weight * cal_val
