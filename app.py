@@ -1,4 +1,4 @@
-# Python 程式碼 V11.5 (針對跨日、累計權重與跳動問題修正版)
+# Python 程式碼 V11.6 (完整修正版：捲動、防跳餐、DataEditor 錯誤修復)
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -7,7 +7,7 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime, timedelta, timezone
 import uuid
-import time # 引入 time 模組
+import time 
 
 # --- 1. 設定頁面 ---
 st.set_page_config(page_title="大文的飲食日記", page_icon="🐱", layout="wide")
@@ -124,7 +124,7 @@ def render_supp_med_html(supp_list, med_list):
     def get_tag_html(items, type_class):
         if not items: return '<span style="color:#5A6B8C; font-size:13px;">無</span>'
         return "".join([f'<span class="tag {type_class}">{item["name"]}<span class="tag-count">x{int(item["count"])}</span></span>' for item in items])
-    icons = {"pill": "💊", "leaf": "🌿"} # 簡化 SVG
+    icons = {"pill": "💊", "leaf": "🌿"} 
     html = '<div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px;">'
     html += f'<div><div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;font-size:12px;font-weight:700;color:#047857;">保養品</div><div class="tag-container">{get_tag_html(supp_list, "tag-green")}</div></div>'
     html += f'<div style="border-left:1px solid #f1f5f9;padding-left:20px;"><div><div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;font-size:12px;font-weight:700;color:#be123c;">藥品</div><div class="tag-container">{get_tag_html(med_list, "tag-red")}</div></div></div></div>'
@@ -163,7 +163,6 @@ def load_data():
 
 df_items, df_log = load_data()
 
-# 初始化 Mapping
 if not df_items.empty:
     df_items.columns = [c.strip() for c in df_items.columns]
     item_map = dict(zip(df_items['Item_Name'], df_items['ItemID']))
@@ -180,6 +179,16 @@ else:
 # ==========================================
 #      邏輯函數區 (Callback)
 # ==========================================
+
+# [修正 1] 初始化 need_scroll 與定義 on_change 函式
+if 'need_scroll' not in st.session_state: st.session_state.need_scroll = False
+
+def on_cat_change():
+    st.session_state.scale_val = None
+    st.session_state.need_scroll = True
+
+def on_item_change():
+    st.session_state.need_scroll = True
 
 def reset_meal_inputs():
     st.session_state.scale_val = None
@@ -201,16 +210,14 @@ def add_to_cart_callback(bowl_w, last_ref_w, last_ref_n):
     unit = unit_map.get(item_name, "g")
     net_weight = 0.0
     
-    # [修正問題 2]：智慧判斷下一筆的參考基準 (Chain of Weight)
+    # 智慧判斷下一筆的參考基準 (Chain of Weight)
     if unit in ["顆", "粒", "錠", "膠囊", "次"]:
         net_weight = scale_reading
-        db_scale_reading = last_ref_w  # 非秤重項目不影響秤重讀數
+        db_scale_reading = last_ref_w  
     else:
         if is_zeroed:
             net_weight = scale_reading
-            # 關鍵修正：如果是歸零單獨秤重，我們假設使用者把這個東西加到了碗裡
-            # 所以下一筆的參考讀數應該是「原本的累積重 + 這次加的淨重」
-            # 這樣下一次秤重扣除時，才會扣掉正確的總重
+            # 歸零單獨秤重，參考基準要累加
             db_scale_reading = last_ref_w + net_weight 
         else:
             if scale_reading < last_ref_w:
@@ -236,14 +243,14 @@ def add_to_cart_callback(bowl_w, last_ref_w, last_ref_n):
         fat = net_weight * fat_val / 100
         phos = net_weight * phos_val / 100
 
-    # [新增/修正] 為了確保重整後不跳餐，明確鎖定 session_state
+    # 為了確保重整後不跳餐，先讀取目前餐別
     current_meal = st.session_state.meal_selector
 
     st.session_state.cart.append({
         "Category": cat_real,
         "ItemID": item_id,
         "Item_Name": item_name,
-        "Scale_Reading": db_scale_reading, # 使用修正後的讀數
+        "Scale_Reading": db_scale_reading,
         "Bowl_Weight": bowl_w,
         "Net_Quantity": net_weight,
         "Cal_Sub": cal,
@@ -260,23 +267,27 @@ def add_to_cart_callback(bowl_w, last_ref_w, last_ref_n):
     st.session_state.dash_med_open = False
     st.session_state.meal_stats_open = False
     
-    # [修正問題 3]：觸發捲動變數，但不強制全頁重整導致的跳動
+    # [修正 3] 關鍵：將讀取到的餐別寫回，防止跳回第一餐
+    st.session_state.meal_selector = current_meal
+    
     st.session_state.just_added = True 
 
-# [修正問題 1]：增加 record_date_obj 參數 (歸屬日期)，與 finish_date 分開
+# 用於按鈕 on_click 的鎖定函式
+def lock_meal_state():
+    if 'meal_selector' in st.session_state:
+        st.session_state.meal_selector = st.session_state.meal_selector
+
 def save_finish_callback(finish_type, waste_net, waste_cal, bowl_w, meal_n, finish_time_str, finish_date_obj, record_date_obj):
     if finish_type == "有剩餘 (需秤重)" and waste_net <= 0:
         st.session_state.finish_error = "剩餘重量計算錯誤，請檢查輸入數值。"
         return
 
-    # Database 欄位：Date (歸屬日期，用於篩選)
+    # Database 欄位：Date (歸屬日期)
     str_date_for_db = record_date_obj.strftime("%Y/%m/%d")
     
     # 實際完食時間 (顯示用)
     str_finish_date = finish_date_obj.strftime("%Y/%m/%d")
     str_time_finish = f"{finish_time_str}:00"
-    
-    # Timestamp 欄位 (可包含真實日期與時間)
     timestamp = f"{str_finish_date} {str_time_finish}"
     
     final_waste_net = -waste_net if finish_type == "有剩餘 (需秤重)" else 0
@@ -287,7 +298,7 @@ def save_finish_callback(finish_type, waste_net, waste_cal, bowl_w, meal_n, fini
     row = [
         str(uuid.uuid4()), 
         timestamp,         # 真實發生時間
-        str_date_for_db,   # 歸屬日期 (例如 12/6)
+        str_date_for_db,   # 歸屬日期
         str_time_finish,   # 時間字串
         meal_n,
         item_id_code, category_code, 0, bowl_w, 
@@ -297,7 +308,6 @@ def save_finish_callback(finish_type, waste_net, waste_cal, bowl_w, meal_n, fini
     ]
     
     try:
-        # 刪除舊的完食紀錄 (基於歸屬日期與餐別)
         current_data = sheet_log.get_all_values()
         header = current_data[0]
         try:
@@ -310,7 +320,6 @@ def save_finish_callback(finish_type, waste_net, waste_cal, bowl_w, meal_n, fini
         rows_to_delete = []
         for i in range(len(current_data) - 1, 0, -1):
             r = current_data[i]
-            # 這裡比對的是 DB 中的 Date (歸屬日期)
             if (r[date_idx] == str_date_for_db and 
                 r[meal_idx] == meal_n and 
                 r[item_idx] in ['WASTE', 'FINISH']):
@@ -321,10 +330,14 @@ def save_finish_callback(finish_type, waste_net, waste_cal, bowl_w, meal_n, fini
             
         sheet_log.append_row(row)
         st.toast("✅ 完食紀錄已更新")
+        
+        # [微調] 在回調中鎖定餐別 (因為是 on_click 安全的)
+        st.session_state.meal_selector = meal_n
+        
         load_data.clear()
         clear_finish_inputs_callback()
-        st.session_state.just_saved = True # 觸發捲動
-        st.rerun()
+        st.session_state.just_saved = True
+        st.rerun() # 解除註解，讓介面即時更新
     except Exception as e:
         st.session_state.finish_error = f"寫入失敗：{e}"
 
@@ -349,27 +362,24 @@ if 'finish_radio' not in st.session_state: st.session_state.finish_radio = "全�
 if 'nav_mode' not in st.session_state: st.session_state.nav_mode = "➕ 新增食物/藥品"
 if 'finish_error' not in st.session_state: st.session_state.finish_error = None
 
-# [修正問題 3]：優化捲動邏輯 (JavaScript)
-# 只有在明確的 Save 或 Add 動作後才捲動，且捲動到特定錨點，而非強制跳轉
+# [修正 2] 捲動邏輯加入 need_scroll 判斷
 scroll_js = """
 <script>
     function smoothScroll() {
-        // 嘗試抓取錨點元素
         var element = window.parent.document.getElementById("input-anchor");
         if (element) {
-            // block: 'start' 代表捲動到該元素的頂部
             element.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
     }
-    // 增加延遲至 500 毫秒，等待 DOM 結構穩定
     setTimeout(smoothScroll, 500);
 </script>
 """
 
-if st.session_state.just_saved or st.session_state.just_added:
+if st.session_state.just_saved or st.session_state.just_added or st.session_state.get('need_scroll', False):
     components.html(scroll_js, height=0)
     st.session_state.just_saved = False
     st.session_state.just_added = False
+    st.session_state.need_scroll = False # 重置
 
 # --- 側邊欄 ---
 with st.sidebar:
@@ -520,8 +530,6 @@ with col_input:
 
         st.divider()
 
-        # [修正] 錨點放置於此，緊鄰 radio button
-        # 使用空的 div 並給予 id，高度設為 0 避免佔位，margin-top 做一點負值微調位置
         st.markdown('<div id="input-anchor" style="height:0px; margin-top:-10px;"></div>', unsafe_allow_html=True)
 
         nav_mode = st.radio(
@@ -544,7 +552,6 @@ with col_input:
                     last_item_db = df_food_only.iloc[-1]['Item_Name']
             except: pass
         
-        # 決定累計重量的參考基準 (如果有購物車，以前一筆購物車為準)
         if len(st.session_state.cart) > 0:
             last_ref_weight = st.session_state.cart[-1]['Scale_Reading']
             last_ref_name = st.session_state.cart[-1]['Item_Name']
@@ -560,7 +567,6 @@ with col_input:
                 c1, c2 = st.columns(2)
                 with c1:
                     unique_cats = ["請選擇..."] + list(df_items['Category'].unique())
-                    def on_cat_change(): st.session_state.scale_val = None
                     filter_cat = st.selectbox("1. 類別", unique_cats, key="cat_select", on_change=on_cat_change)
                     
                     filtered_items = []
@@ -568,7 +574,7 @@ with col_input:
                          filtered_items = df_items[df_items['Category'] == filter_cat]['Item_Name'].tolist()
 
                 with c2:
-                    item_name = st.selectbox("2. 品名", filtered_items if filtered_items else ["請先選類別"], key="item_select")
+                    item_name = st.selectbox("2. 品名", filtered_items if filtered_items else ["請先選類別"], key="item_select", on_change=on_item_change)
 
                 unit = unit_map.get(item_name, "g")
                 
@@ -587,7 +593,6 @@ with col_input:
                 with c4:
                     net_weight_disp = 0.0
                     calc_msg_disp = "請輸入"
-                    
                     scale_val = safe_float(scale_reading_ui)
                     
                     if scale_val > 0:
@@ -597,7 +602,7 @@ with col_input:
                         else:
                             if is_zeroed_ui:
                                 net_weight_disp = scale_val
-                                calc_msg_disp = "單獨秤重 (累計將修正)"
+                                calc_msg_disp = "單獨秤重"
                             else:
                                 if scale_val < last_ref_weight:
                                     calc_msg_disp = "⚠️ 數值異常"
@@ -638,77 +643,72 @@ with col_input:
                         "Cal_Sub": st.column_config.NumberColumn("熱量", format="%.1f")
                     },
                     column_order=["Item_Name", "Net_Quantity", "Cal_Sub"],
-                    num_rows="dynamic",
+                    num_rows="fixed", 
                     key="cart_editor"
                 )
-
-                if not edited_df.empty:
-                    try:
-                        edited_df['Net_Quantity'] = pd.to_numeric(edited_df['Net_Quantity'], errors = 'coerce').fillna(0)
-                        edited_df['Cal_Sub'] = pd.to_numeric(edited_df['Cal_Sub'], errors='coerce').fillna(0)
-                        mask_total = ~edited_df['Category'].isin(['藥品', '保養品'])
-                        live_sum_net = edited_df[mask_total]['Net_Quantity'].sum()
-                        live_sum_cal = edited_df['Cal_Sub'].sum()
-                        st.info(f"∑ 總計 (不含藥)：{live_sum_net:.1f} g  |  🔥 {live_sum_cal:.1f} kcal")
-                    except: pass
-
                 
-                # 刪除選單
+                edited_df = edited_df.dropna(subset=['Item_Name'])
+                edited_df = edited_df[edited_df['Item_Name'] != ""]
+
                 delete_options = ["請選擇要刪除的項目..."] + [f"{i+1}. {row['Item_Name']} ({row['Net_Quantity']}g)" for i, row in edited_df.iterrows()]
                 del_item = st.selectbox("🗑️ 刪除項目 (行動版專用)", delete_options)
                 
                 if del_item != "請選擇要刪除的項目..." and st.button("確認刪除", type="secondary"):
-                    idx_to_del = int(del_item.split(".")[0]) - 1
-                    st.session_state.cart.pop(idx_to_del)
-                    st.rerun()
-
-                if st.button("💾 儲存寫入 Google Sheet", type="primary", use_container_width=True):
-                    with st.spinner("寫入中..."):
-                        rows = []
-                        str_date = record_date.strftime("%Y/%m/%d")
-                        str_time = f"{record_time_str}:00"
-                        timestamp = f"{str_date} {str_time}"
-
-                        for i, row_data in edited_df.iterrows():
-                            orig_item = next((x for x in st.session_state.cart if x['Item_Name'] == row_data['Item_Name']), {})
-                            row = [
-                                str(uuid.uuid4()), timestamp, str_date, str_time, meal_name,
-                                orig_item.get('ItemID', ''), orig_item.get('Category', ''), 
-                                orig_item.get('Scale_Reading', 0), orig_item.get('Bowl_Weight', 0), 
-                                row_data['Net_Quantity'], row_data['Cal_Sub'],
-                                orig_item.get('Prot_Sub', 0), orig_item.get('Fat_Sub', 0), 
-                                orig_item.get('Phos_Sub', 0), "", row_data['Item_Name'], ""
-                            ]
-                            rows.append(row)
-                        try:
-                            sheet_log.append_rows(rows)
-                            st.toast("✅ 寫入成功！")
-                            st.session_state.cart = []
-                            st.session_state.dash_stat_open = False
-                            st.session_state.dash_med_open = False
-                            st.session_state.meal_stats_open = False
-                            
-                            # [關鍵修正] 這裡也要鎖定餐別
-                            st.session_state.meal_selector = meal_name 
-
-                            load_data.clear()
-                            st.session_state.just_saved = True # 觸發捲動
+                    try:
+                        idx_to_del = int(del_item.split(".")[0]) - 1
+                        if 0 <= idx_to_del < len(st.session_state.cart):
+                            st.session_state.cart.pop(idx_to_del)
                             st.rerun()
-                        except Exception as e:
-                            st.error(f"寫入失敗：{e}")
+                    except:
+                        st.error("刪除失敗，請重新整理頁面")
+
+                if st.button("💾 儲存寫入 Google Sheet", type="primary", use_container_width=True, on_click=lock_meal_state):
+                    if edited_df.empty:
+                        st.warning("清單為空或資料不完整")
+                    else:
+                        with st.spinner("寫入中..."):
+                            rows = []
+                            str_date = record_date.strftime("%Y/%m/%d")
+                            str_time = f"{record_time_str}:00"
+                            timestamp = f"{str_date} {str_time}"
+
+                            for i, row_data in edited_df.iterrows():
+                                orig_item = next((x for x in st.session_state.cart if x['Item_Name'] == row_data['Item_Name']), {})
+                                safe_net = safe_float(row_data['Net_Quantity'])
+                                safe_cal = safe_float(row_data['Cal_Sub'])
+
+                                row = [
+                                    str(uuid.uuid4()), timestamp, str_date, str_time, meal_name,
+                                    orig_item.get('ItemID', ''), orig_item.get('Category', ''), 
+                                    orig_item.get('Scale_Reading', 0), orig_item.get('Bowl_Weight', 0), 
+                                    safe_net, safe_cal,
+                                    orig_item.get('Prot_Sub', 0), orig_item.get('Fat_Sub', 0), 
+                                    orig_item.get('Phos_Sub', 0), "", row_data['Item_Name'], ""
+                                ]
+                                rows.append(row)
+                            try:
+                                sheet_log.append_rows(rows)
+                                st.toast("✅ 寫入成功！")
+                                st.session_state.cart = []
+                                st.session_state.dash_stat_open = False
+                                st.session_state.dash_med_open = False
+                                st.session_state.meal_stats_open = False
+                                load_data.clear()
+                                st.session_state.just_saved = True 
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"寫入失敗：{e}")
 
         # --- 模式 2: 完食 ---
         elif nav_mode == "🏁 完食/紀錄剩餘":
             st.markdown(f"##### 🍽️ 編輯：{meal_name}")
             st.caption("紀錄完食時間，若有剩餘，請將剩食倒入新容器(或原碗)秤重")
             
-            # [修正問題 1]：實際完食時間選擇
             finish_date = st.date_input("完食日期 (跨日請選實際日期)", value=record_date, key="finish_date_picker")
             default_now = get_tw_time().strftime("%H%M")
             raw_finish_time = st.text_input("完食時間 (如 0200)", value=default_now, key="finish_time_input")
             fmt_finish_time = format_time_str(raw_finish_time)
             
-            # 顯示修正提示
             if finish_date != record_date:
                 st.info(f"💡 此紀錄將歸屬在 **{record_date.strftime('%m/%d')}** 的 {meal_name}，但時間標記為 **{finish_date.strftime('%m/%d')} {fmt_finish_time}**")
             else:
@@ -732,7 +732,6 @@ with col_input:
                 if waste_gross is not None and waste_tare is not None:
                     if waste_net > 0:
                         st.warning(f"📉 實際剩餘淨重：{waste_net:.1f} g")
-                        # 簡單估算熱量 (基於當餐平均熱量密度)
                         if not df_meal.empty:
                             df_meal_clean = clean_duplicate_finish_records(df_meal)
                             meal_foods = df_meal_clean[df_meal_clean['Net_Quantity'].apply(lambda x: safe_float(x)) > 0]
@@ -749,5 +748,4 @@ with col_input:
                     elif val_gross > 0 and waste_net <= 0:
                         st.error("空重不能大於總重！")
 
-            # [修正問題 1]：傳遞 finish_date (實際) 與 record_date (歸屬) 兩個參數
             st.button("💾 記錄完食/剩餘", type="primary", on_click=save_finish_callback, args=(finish_type, waste_net, waste_cal, bowl_weight, meal_name, fmt_finish_time, finish_date, record_date))
