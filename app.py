@@ -649,36 +649,35 @@ with col_dash:
 # --- 右欄：操作區 ---
 with col_input:
    
-   # 1. 定義餐別清單
-   meal_options = ["第一餐", "第二餐", "第三餐", "第四餐", "第五餐", 
+    # 1. 定義餐別清單
+    meal_options = ["第一餐", "第二餐", "第三餐", "第四餐", "第五餐", 
                     "第六餐", "第七餐", "第八餐", "第九餐", "第十餐", "點心1", "點心2"]
-   # 2. 準備餐別狀態資料（這是新加入的邏輯，把要呈現的資訊改成字典的方式讀取）
-   # 用來製作："第一餐（已記）（完食：12:30)"這樣的文字
-   meal_status_map = {}
 
-   # 用來判斷預設要選哪一餐的清單
-   recorded_meals_list = []
-   if not df_today.empty:
-        # A. 找出所有已記錄的餐（不管是吃還是完食）
+    # 2. 準備餐別狀態資料
+    meal_status_map = {}
+    recorded_meals_list = []
+
+    if not df_today.empty:
+        # A. 找出所有已記錄的餐
         recorded_meals_list = df_today['Meal_Name'].unique().tolist()
 
         # B. 標記「已記」
         for m in recorded_meals_list:
-            meal_status_map = "（己記）"
+            # [修正] 這裡必須指定 key [m]，不能直接寫 meal_status_map = ...，否則字典會變字串
+            meal_status_map[m] = " (已記)"
         
         # C. 標記「完食」並加上時間
-        # 篩選 ItemID 是 FINISH 或 WASTE 的資料
-        mask_finish = df_today['ItemID'].isin(['FINISH','WASTE'])
+        mask_finish = df_today['ItemID'].isin(['FINISH', 'WASTE'])
         df_finished = df_today[mask_finish]
 
         for _, row in df_finished.iterrows():
             m_name = row['Meal_Name']
-            # 取時間的前5碼 （例如 12:51:00 -> 12:51)
+            # 取時間的前5碼 (例如 12:51:00 -> 12:51)
             t_str = str(row['Time'])[:5]
-            meal_status_map[m_name] = f"（已記）（完食：{t_str}"  
+            # [修正] 補上漏掉的右括號 )
+            meal_status_map[m_name] = f" (已記) (完食: {t_str})"
 
-    
-    # 3. 自動跳到下一餐邏輯（這段要保留，不然每次重整都會跳回第一餐）
+    # 3. 自動跳到下一餐邏輯
     default_meal_name = meal_options[0]
     for m in meal_options:
         # 如果這一餐還沒有出現在紀錄中，就預設選它
@@ -686,7 +685,7 @@ with col_input:
             default_meal_name = m
             break
 
-    # 初始化 seesion_state        
+    # 初始化 session_state        
     if 'meal_selector' not in st.session_state:
         st.session_state.meal_selector = default_meal_name
 
@@ -705,12 +704,13 @@ with col_input:
             # 5. 建立下拉選單
             meal_name = st.selectbox(
                 "餐別", 
-                meal_options,              # 這裡使用了上面定義的清單
-                format_func=meal_formatter, # 這裡使用了上面的格式化函式
+                meal_options,
+                format_func=meal_formatter,
                 key="meal_selector",
                 on_change=reset_meal_inputs
             )
         
+        # [邏輯保留] 為了讓下方 c_bowl (未顯示在截圖中) 能讀到 last_bowl，這段放在這裡
         last_bowl = 30.0
         df_meal = pd.DataFrame()
         if not df_today.empty:
@@ -719,7 +719,8 @@ with col_input:
             if not df_meal.empty:
                 try:
                     last_bowl = float(df_meal.iloc[-1]['Bowl_Weight'])
-                except: pass
+                except: 
+                    pass
         
         with c_bowl:
             bowl_weight = st.number_input("🥣 碗重 (g)", value=last_bowl, step=0.1, format="%.1f")
