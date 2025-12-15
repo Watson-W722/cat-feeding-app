@@ -658,8 +658,7 @@ with col_input:
 
    # 用來判斷預設要選哪一餐的清單
    recorded_meals_list = []
-
-    if not df_today.empty:
+   if not df_today.empty:
         # A. 找出所有已記錄的餐（不管是吃還是完食）
         recorded_meals_list = df_today['Meal_Name'].unique().tolist()
 
