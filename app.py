@@ -649,34 +649,65 @@ with col_dash:
 # --- 右欄：操作區 ---
 with col_input:
    
-    recorded_meals = []
+   # 1. 定義餐別清單
+   meal_options = ["第一餐", "第二餐", "第三餐", "第四餐", "第五餐", 
+                    "第六餐", "第七餐", "第八餐", "第九餐", "第十餐", "點心1", "點心2"]
+   # 2. 準備餐別狀態資料（這是新加入的邏輯，把要呈現的資訊改成字典的方式讀取）
+   # 用來製作："第一餐（已記）（完食：12:30)"這樣的文字
+   meal_status_map = {}
+
+   # 用來判斷預設要選哪一餐的清單
+   recorded_meals_list = []
+
     if not df_today.empty:
-        recorded_meals = df_today['Meal_Name'].unique().tolist()
+        # A. 找出所有已記錄的餐（不管是吃還是完食）
+        recorded_meals_list = df_today['Meal_Name'].unique().tolist()
 
-    meal_options = ["第一餐", "第二餐", "第三餐", "第四餐", "第五餐", 
-                    "第六餐", "第七餐", "第八餐", "第九餐", "第十餐", "點心"]
+        # B. 標記「已記」
+        for m in recorded_meals_list:
+            meal_status_map = "（己記）"
+        
+        # C. 標記「完食」並加上時間
+        # 篩選 ItemID 是 FINISH 或 WASTE 的資料
+        mask_finish = df_today['ItemID'].isin(['FINISH','WASTE'])
+        df_finished = df_today[mask_finish]
 
+        for _, row in df_finished.iterrows():
+            m_name = row['Meal_Name']
+            # 取時間的前5碼 （例如 12:51:00 -> 12:51)
+            t_str = str(row['Time'])[:5]
+            meal_status_map[m_name] = f"（已記）（完食：{t_str}"  
+
+    
+    # 3. 自動跳到下一餐邏輯（這段要保留，不然每次重整都會跳回第一餐）
     default_meal_name = meal_options[0]
     for m in meal_options:
-        if m not in recorded_meals:
+        # 如果這一餐還沒有出現在紀錄中，就預設選它
+        if m not in recorded_meals_list:
             default_meal_name = m
             break
-            
+
+    # 初始化 seesion_state        
     if 'meal_selector' not in st.session_state:
         st.session_state.meal_selector = default_meal_name
 
+    # --- UI 顯示區 ---
     with st.container(border=True):
         st.markdown("#### 🍽️ 本日飲食紀錄")
         
         c_meal, c_bowl = st.columns(2)
         with c_meal:
+            # 4. 定義顯示格式函式
             def meal_formatter(m):
-                return f"{m} (已記)" if m in recorded_meals else m
+                # 去查表，如果這餐有狀態文字就加上去，沒有就回傳原本的餐名
+                suffix = meal_status_map.get(m, "")
+                return f"{m}{suffix}"
             
+            # 5. 建立下拉選單
             meal_name = st.selectbox(
                 "餐別", 
-                meal_options, 
-                format_func=meal_formatter,
+                meal_options,              # 這裡使用了上面定義的清單
+                format_func=meal_formatter, # 這裡使用了上面的格式化函式
                 key="meal_selector",
                 on_change=reset_meal_inputs
             )
