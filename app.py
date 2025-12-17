@@ -440,6 +440,16 @@ def save_finish_callback(finish_type, waste_net, waste_cal, bowl_w, meal_n, fini
 # ==========================================
 inject_custom_css()
 
+# 初始化狀態 (補上這段)
+if 'dash_stat_open' not in st.session_state: st.session_state.dash_stat_open = False
+if 'dash_med_open' not in st.session_state: st.session_state.dash_med_open = False
+if 'meal_stats_open' not in st.session_state: st.session_state.meal_stats_open = False
+if 'just_saved' not in st.session_state: st.session_state.just_saved = False
+if 'just_added' not in st.session_state: st.session_state.just_added = False
+if 'finish_radio' not in st.session_state: st.session_state.finish_radio = "全部吃光 (盤光光)"
+if 'nav_mode' not in st.session_state: st.session_state.nav_mode = "➕ 新增食物/藥品"
+if 'finish_error' not in st.session_state: st.session_state.finish_error = None
+
 # 捲動 JS
 scroll_js = """
 <script>
