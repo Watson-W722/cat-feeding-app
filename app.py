@@ -9,6 +9,10 @@ from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime, timedelta, timezone
 import uuid
 import time 
+from PIL import Image, ImageOps # 處理圖片用
+import io
+import base64
+
 
 # --- 1. 設定頁面 ---
 st.set_page_config(page_title="貓咪飲食紀錄 (體驗版)", page_icon="🐱", layout="wide")
@@ -110,9 +114,32 @@ def calculate_intake_breakdown(df):
     return final_food_net, final_water_net
 
 # --- HTML 渲染函式 (補回遺漏的部分) ---
-def render_header(date_str):
-    cat_svg = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5c.67 0 1.35.09 2 .26 1.78-2 5.03-2.84 6.42-2.26 1.4.58-.42 7-.42 7 .57 1.07 1 2.24 1 3.44C21 17.9 16.97 21 12 21S3 17.9 3 13.44C3 12.24 3.43 11.07 4 10c0 0-1.82-6.42-.42-7 1.39-.58 4.64.26 6.42 2.26.65-.17 1.33-.26 2-.26z"/><path d="M9 13h.01"/><path d="M15 13h.01"/></svg>'
-    html = f'<div class="main-header"><div class="header-icon">{cat_svg}</div><div><div style="font-size:24px; font-weight:800; color:#012172;">大文的飲食日記</div><div style="font-size:15px; font-weight:500; color:#5A6B8C;">{date_str}</div></div></div>'
+# --- [修改] HTML 渲染函式 (支援自訂頭像與名字) ---
+def render_header(date_str, pet_name="大文", pet_image=None):
+    # 預設的貓咪 SVG 圖示
+    default_svg = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5c.67 0 1.35.09 2 .26 1.78-2 5.03-2.84 6.42-2.26 1.4.58-.42 7-.42 7 .57 1.07 1 2.24 1 3.44C21 17.9 16.97 21 12 21S3 17.9 3 13.44C3 12.24 3.43 11.07 4 10c0 0-1.82-6.42-.42-7 1.39-.58 4.64.26 6.42 2.26.65-.17 1.33-.26 2-.26z"/><path d="M9 13h.01"/><path d="M15 13h.01"/></svg>'
+    
+    # 決定顯示圖片還是 SVG
+    if pet_image:
+        icon_html = f'<img src="{pet_image}" style="width:48px; height:48px; border-radius:12px; object-fit:cover;">'
+        icon_bg = "transparent" # 有照片時背景透明
+        icon_padding = "0px"
+    else:
+        icon_html = default_svg
+        icon_bg = "#012172"     # 無照片時維持深藍背景
+        icon_padding = "12px"
+
+    html = f'''
+    <div class="main-header">
+        <div class="header-icon" style="background:{icon_bg}; padding:{icon_padding}; display:flex; align-items:center; justify-content:center;">
+            {icon_html}
+        </div>
+        <div>
+            <div style="font-size:24px; font-weight:800; color:#012172;">{pet_name}的飲食日記</div>
+            <div style="font-size:15px; font-weight:500; color:#5A6B8C;">{date_str}</div>
+        </div>
+    </div>
+    '''
     return html
 
 def render_daily_stats_html(day_stats):
@@ -235,6 +262,35 @@ if st.sidebar.button("登出 / 換資料庫"):
     st.session_state.is_logged_in = False
     st.session_state.user_sheet_url = None
     st.rerun()
+
+# --- [新增] 讀取使用者設定 (名字與照片) ---
+# 為了避免每次操作都讀取 API，可以使用 session_state 快取
+if 'pet_settings' not in st.session_state:
+    st.session_state.pet_settings = load_user_settings(sheet_db)
+
+current_pet_name, current_pet_image = st.session_state.pet_settings
+if not current_pet_name: current_pet_name = "大文" # 預設值
+
+# --- [新增] 側邊欄設定區 ---
+with st.sidebar.expander("⚙️ 寵物資料設定"):
+    new_name = st.text_input("寵物名字", value=current_pet_name)
+    uploaded_photo = st.file_uploader("上傳大頭照 (自動裁切)", type=['jpg', 'png', 'jpeg'])
+    
+    if st.button("💾 儲存設定"):
+        with st.spinner("處理中..."):
+            # 處理圖片
+            final_img_str = current_pet_image # 預設沿用舊圖
+            if uploaded_photo:
+                final_img_str = process_image_to_base64(uploaded_photo)
+            
+            # 寫入 Google Sheet
+            save_user_settings(new_name, final_img_str, sheet_db)
+            
+            # 更新 Session State 並重整
+            st.session_state.pet_settings = (new_name, final_img_str)
+            st.rerun()
+
+st.sidebar.divider()
 
 # ==========================================
 #      初始化 Mapping (資料轉換)
@@ -471,6 +527,49 @@ def save_finish_callback(finish_type, waste_net, waste_cal, bowl_w, meal_n, fini
     except Exception as e:
         st.session_state.finish_error = f"寫入失敗：{e}"
 
+# --- [新增] 設定存取與圖片處理工具 ---
+
+# 1. 圖片轉 Base64 字串 (縮放並裁切成正方形)
+def process_image_to_base64(uploaded_file):
+    try:
+        image = Image.open(uploaded_file)
+        # 自動修正手機照片轉向問題 (EXIF orientation)
+        image = ImageOps.exif_transpose(image) 
+        
+        # 智慧裁切成正方形 (避免變形)
+        thumb = ImageOps.fit(image, (150, 150), Image.Resampling.LANCZOS)
+        
+        # 轉成 Base64
+        buffered = io.BytesIO()
+        thumb.save(buffered, format="PNG")
+        img_str = base64.b64encode(buffered.getvalue()).decode()
+        return f"data:image/png;base64,{img_str}"
+    except Exception as e:
+        st.error(f"圖片處理失敗: {e}")
+        return None
+
+# 2. 儲存設定 (名字與圖片) 到 DB_Items 的 Z1, Z2 儲存格
+# 我們利用 DB_Items 最右邊通常用不到的格子來存這些設定，省去開新分頁的麻煩
+def save_user_settings(name, image_data, sheet_db):
+    try:
+        # Z1 存名字, Z2 存圖片編碼
+        sheet_db.update_acell('Z1', name)
+        if image_data:
+            sheet_db.update_acell('Z2', image_data)
+        st.toast("✅ 設定已儲存！")
+    except Exception as e:
+        st.error(f"設定儲存失敗: {e}")
+
+# 3. 讀取設定
+def load_user_settings(sheet_db):
+    try:
+        # 讀取 Z1 和 Z2
+        name = sheet_db.acell('Z1').value
+        image_data = sheet_db.acell('Z2').value
+        return name, image_data
+    except:
+        return None, None
+
 # ==========================================
 #      UI 佈局開始
 # ==========================================
@@ -506,9 +605,44 @@ if st.session_state.just_saved or st.session_state.just_added or st.session_stat
 
 # --- 側邊欄 ---
 with st.sidebar:
-    st.header("⚙️ 設定")
+    # 1. 連線資訊與登出 (放在最顯眼處)
+    st.caption(f"📚 目前連線：{sheet_title}")
+    if st.button("登出 / 換資料庫", type="secondary"):
+        st.session_state.is_logged_in = False
+        st.session_state.user_sheet_url = None
+        st.rerun()
+    
+    st.divider()
+
+    # 2. 寵物資料設定 (新加入的功能)
+    # 先讀取設定
+    if 'pet_settings' not in st.session_state:
+        st.session_state.pet_settings = load_user_settings(sheet_db)
+
+    current_pet_name, current_pet_image = st.session_state.pet_settings
+    if not current_pet_name: current_pet_name = "大文"
+
+    with st.expander("⚙️ 寵物資料設定"):
+        new_name = st.text_input("寵物名字", value=current_pet_name)
+        uploaded_photo = st.file_uploader("上傳大頭照", type=['jpg', 'png', 'jpeg'], help="將自動裁切為正方形")
+        
+        if st.button("💾 儲存設定"):
+            with st.spinner("處理中..."):
+                final_img_str = current_pet_image
+                if uploaded_photo:
+                    final_img_str = process_image_to_base64(uploaded_photo)
+                
+                save_user_settings(new_name, final_img_str, sheet_db)
+                st.session_state.pet_settings = (new_name, final_img_str)
+                st.rerun()
+
+    st.divider()
+
+    # 3. 日期與時間 (您原本的這段)
+    st.header("📅 日期與時間") # 這裡直接用 st.header 即可，不用 st.sidebar.header
+    
     tw_now = get_tw_time()
-    record_date = st.date_input("📅 日期", tw_now)
+    record_date = st.date_input("日期", tw_now) # 標籤簡化為"日期"比較不佔空間
     str_date_filter = record_date.strftime("%Y/%m/%d")
     
     default_sidebar_time = tw_now.strftime("%H%M")
@@ -516,8 +650,8 @@ with st.sidebar:
     record_time_str = format_time_str(raw_record_time)
     st.caption(f"將記錄為：{record_time_str}")
     
-    if st.button("🔄 重新整理數據"):
-        # 體驗版這裡改成 rerun 即可，因為 load_data 已經被取代了
+    # 4. 重新整理按鈕
+    if st.button("🔄 重新整理數據", type="primary"):
         st.rerun()
 
 # ----------------------------------------------------
@@ -562,7 +696,9 @@ if not df_log.empty:
 # 2. 佈局實作
 # ----------------------------------------------------
 date_display = record_date.strftime("%Y年 %m月 %d日")
-st.markdown(render_header(date_display), unsafe_allow_html=True)
+
+# [修改] 呼叫 render_header 時傳入設定
+st.markdown(render_header(date_display, current_pet_name, current_pet_image), unsafe_allow_html=True)
 
 col_dash, col_input = st.columns([4, 3], gap="medium")
 
