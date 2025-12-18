@@ -1,5 +1,5 @@
-# Python 程式碼 (公開體驗版 Public Beta) - V1.1
-# 修正重點：將工具函式移至頂部，解決 NameError；確認登入後自動進入主畫面流程
+# Python 程式碼 (公開體驗版 Public Beta) - V1.2
+# 修正重點：設定資料改存於獨立分頁 "App_Config"，避免破壞 DB_Items 結構
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -63,7 +63,7 @@ def inject_custom_css():
     """, unsafe_allow_html=True)
 
 # ==========================================
-#      [重要修正] 將所有工具函式移至此處，確保先定義後使用
+#      工具函式
 # ==========================================
 
 def safe_float(value):
@@ -114,12 +114,13 @@ def calculate_intake_breakdown(df):
     final_food_net = input_food + (total_waste * ratio_food)
     return final_food_net, final_water_net
 
-# --- 設定存取與圖片處理工具 ---
+# --- 設定存取與圖片處理工具 (修正版) ---
 def process_image_to_base64(uploaded_file):
     try:
         image = Image.open(uploaded_file)
         image = ImageOps.exif_transpose(image) 
-        thumb = ImageOps.fit(image, (150, 150), Image.Resampling.LANCZOS)
+        # [修正] 縮小到 100x100，減少字串長度，提高成功率
+        thumb = ImageOps.fit(image, (100, 100), Image.Resampling.LANCZOS)
         buffered = io.BytesIO()
         thumb.save(buffered, format="PNG")
         img_str = base64.b64encode(buffered.getvalue()).decode()
@@ -128,21 +129,31 @@ def process_image_to_base64(uploaded_file):
         st.error(f"圖片處理失敗: {e}")
         return None
 
-def save_user_settings(name, image_data, sheet_db):
+# [修正] 改用獨立分頁 "App_Config" 存取設定
+def save_user_settings(name, image_data, spreadsheet):
     try:
-        sheet_db.update_acell('Z1', name)
+        try:
+            sh_config = spreadsheet.worksheet("App_Config")
+        except:
+            # 如果分頁不存在，自動建立
+            sh_config = spreadsheet.add_worksheet(title="App_Config", rows=10, cols=2)
+        
+        # A1 存名字, B1 存圖片
+        sh_config.update('A1', name)
         if image_data:
-            sheet_db.update_acell('Z2', image_data)
+            sh_config.update('B1', image_data)
         st.toast("✅ 設定已儲存！")
     except Exception as e:
         st.error(f"設定儲存失敗: {e}")
 
-def load_user_settings(sheet_db):
+def load_user_settings(spreadsheet):
     try:
-        name = sheet_db.acell('Z1').value
-        image_data = sheet_db.acell('Z2').value
+        sh_config = spreadsheet.worksheet("App_Config")
+        name = sh_config.acell('A1').value
+        image_data = sh_config.acell('B1').value
         return name, image_data
     except:
+        # 找不到分頁或資料，回傳預設值
         return None, None
 
 # --- HTML 渲染函式 ---
@@ -223,9 +234,10 @@ def load_data_from_url(sheet_url):
         
         db_data = sheet_db.get_all_records()
         log_data = sheet_log.get_all_records()
-        return pd.DataFrame(db_data), pd.DataFrame(log_data), sheet_log, sheet_db, spreadsheet.title
+        # [修正] 多回傳 spreadsheet 物件，以便操作分頁
+        return pd.DataFrame(db_data), pd.DataFrame(log_data), sheet_log, sheet_db, spreadsheet.title, spreadsheet
     except Exception as e:
-        return None, None, None, None, str(e)
+        return None, None, None, None, str(e), None
 
 # 3. 登入頁面
 if 'user_sheet_url' not in st.session_state: st.session_state.user_sheet_url = None
@@ -260,7 +272,8 @@ def login_page():
                 st.error("請輸入網址")
             else:
                 with st.spinner("連線測試中..."):
-                    _items, _log, _sh_log, _sh_db, _msg = load_data_from_url(url_input)
+                    # [修正] 接收 6 個回傳值
+                    _items, _log, _sh_log, _sh_db, _msg, _spreadsheet = load_data_from_url(url_input)
                     if _items is not None:
                         st.session_state.user_sheet_url = url_input
                         st.session_state.is_logged_in = True
@@ -268,7 +281,7 @@ def login_page():
                         time.sleep(1)
                         st.rerun()
                     else:
-                        st.error(f"連線失敗，請檢查權限是否已開給機器人。\n錯誤訊息：{_msg}")
+                        st.error(f"連線失敗，請檢查權限。\n錯誤訊息：{_msg}")
 
 # === 程式進入點：登入檢查 ===
 if not st.session_state.is_logged_in:
@@ -276,12 +289,12 @@ if not st.session_state.is_logged_in:
     st.stop() # 未登入前停止執行下方程式碼
 
 # --- 已登入：讀取使用者資料 ---
-# 這裡就是您提到的「取代 load_data()」的部分
-df_items, df_log, sheet_log, sheet_db, sheet_title = load_data_from_url(st.session_state.user_sheet_url)
+# [修正] 接收 6 個回傳值，包含 spreadsheet
+df_items, df_log, sheet_log, sheet_db, sheet_title, spreadsheet = load_data_from_url(st.session_state.user_sheet_url)
 
 if df_items is None:
-    st.error("資料讀取錯誤，請重新整理或檢查連結")
-    st.session_state.is_logged_in = False # 重置登入狀態
+    st.error(f"資料讀取錯誤：{sheet_title}") # sheet_title 這裡是錯誤訊息
+    st.session_state.is_logged_in = False
     if st.button("回登入頁"): st.rerun()
     st.stop()
 
@@ -305,7 +318,6 @@ else:
 #      邏輯函數區 (Callback) 
 # ==========================================
 
-# 1. 捲動狀態與 on_change 函式
 if 'need_scroll' not in st.session_state: st.session_state.need_scroll = False
 
 def on_cat_change():
@@ -322,7 +334,6 @@ def reset_meal_inputs():
     st.session_state.waste_tare = None
     st.session_state.finish_radio = "全部吃光 (盤光光)"
 
-# 2. 動態計算上一餐密度函式
 def get_previous_meal_density(df_log_data):
     if df_log_data.empty: return None
     try:
@@ -368,7 +379,6 @@ def get_previous_meal_density(df_log_data):
         print(f"Error calc density: {e}")
         return None
 
-# 3. 加入清單函式
 def add_to_cart_callback(bowl_w, last_ref_w, last_ref_n):   
     category = st.session_state.get('cat_select', '請選擇...')
     item_name = st.session_state.get('item_select', '請先選類別')
@@ -449,17 +459,14 @@ def add_to_cart_callback(bowl_w, last_ref_w, last_ref_n):
     st.session_state.meal_selector = current_meal
     st.session_state.just_added = True 
 
-# 4. 鎖定狀態函式
 def lock_meal_state():
     if 'meal_selector' in st.session_state:
         st.session_state.meal_selector = st.session_state.meal_selector
 
-# 5. 清除輸入函式
 def clear_finish_inputs_callback():
     st.session_state.waste_gross = None
     st.session_state.waste_tare = None
 
-# 6. 完食儲存函式
 def save_finish_callback(finish_type, waste_net, waste_cal, bowl_w, meal_n, finish_time_str, finish_date_obj, record_date_obj):
     if finish_type == "有剩餘 (需秤重)" and waste_net <= 0:
         st.session_state.finish_error = "剩餘重量計算錯誤，請檢查輸入數值。"
@@ -525,7 +532,7 @@ def save_finish_callback(finish_type, waste_net, waste_cal, bowl_w, meal_n, fini
 # ==========================================
 inject_custom_css()
 
-# 初始化狀態 (補上這段)
+# 初始化狀態
 if 'dash_stat_open' not in st.session_state: st.session_state.dash_stat_open = False
 if 'dash_med_open' not in st.session_state: st.session_state.dash_med_open = False
 if 'meal_stats_open' not in st.session_state: st.session_state.meal_stats_open = False
@@ -555,7 +562,6 @@ if st.session_state.just_saved or st.session_state.just_added or st.session_stat
 
 # --- 側邊欄 ---
 with st.sidebar:
-    # 1. 連線資訊與登出 (放在最顯眼處)
     st.caption(f"📚 目前連線：{sheet_title}")
     if st.button("登出 / 換資料庫", type="secondary"):
         st.session_state.is_logged_in = False
@@ -564,17 +570,16 @@ with st.sidebar:
     
     st.divider()
 
-    # 2. 寵物資料設定 (新加入的功能)
-    # 先讀取設定
+    # 寵物資料設定
     if 'pet_settings' not in st.session_state:
-        st.session_state.pet_settings = load_user_settings(sheet_db)
+        st.session_state.pet_settings = load_user_settings(spreadsheet)
 
     current_pet_name, current_pet_image = st.session_state.pet_settings
     if not current_pet_name: current_pet_name = "大文"
 
     with st.expander("⚙️ 寵物資料設定"):
         new_name = st.text_input("寵物名字", value=current_pet_name)
-        uploaded_photo = st.file_uploader("上傳大頭照 (自動裁切)", type=['jpg', 'png', 'jpeg'], help="將自動裁切為正方形")
+        uploaded_photo = st.file_uploader("上傳大頭照", type=['jpg', 'png', 'jpeg'], help="將自動裁切為正方形")
         
         if st.button("💾 儲存設定"):
             with st.spinner("處理中..."):
@@ -582,17 +587,16 @@ with st.sidebar:
                 if uploaded_photo:
                     final_img_str = process_image_to_base64(uploaded_photo)
                 
-                save_user_settings(new_name, final_img_str, sheet_db)
+                save_user_settings(new_name, final_img_str, spreadsheet)
                 st.session_state.pet_settings = (new_name, final_img_str)
                 st.rerun()
 
     st.divider()
 
-    # 3. 日期與時間 (您原本的這段)
-    st.header("📅 日期與時間") # 這裡直接用 st.header 即可，不用 st.sidebar.header
-    
+    # 日期與時間
+    st.header("📅 日期與時間") 
     tw_now = get_tw_time()
-    record_date = st.date_input("日期", tw_now) # 標籤簡化為"日期"比較不佔空間
+    record_date = st.date_input("日期", tw_now) 
     str_date_filter = record_date.strftime("%Y/%m/%d")
     
     default_sidebar_time = tw_now.strftime("%H%M")
@@ -600,54 +604,14 @@ with st.sidebar:
     record_time_str = format_time_str(raw_record_time)
     st.caption(f"將記錄為：{record_time_str}")
     
-    # 4. 重新整理按鈕
     if st.button("🔄 重新整理數據", type="primary"):
         st.rerun()
-
-# ----------------------------------------------------
-# 1. 數據準備
-# ----------------------------------------------------
-df_today = pd.DataFrame()
-day_stats = {'cal':0, 'food':0, 'water':0, 'prot':0, 'fat':0}
-meal_stats = {'name': '尚未選擇', 'cal':0, 'food':0, 'water':0, 'prot':0, 'fat':0}
-supp_list = []
-med_list = []
-
-if not df_log.empty:
-    df_today = df_log[df_log['Date'] == str_date_filter].copy()
-    if not df_today.empty:
-        if 'Category' in df_today.columns:
-            df_today['Category'] = df_today['Category'].astype(str).str.strip()
-        
-        for col in ['Cal_Sub', 'Net_Quantity', 'Prot_Sub', 'Fat_Sub']:
-            df_today[col] = pd.to_numeric(df_today[col], errors='coerce').fillna(0)
-        
-        df_today = clean_duplicate_finish_records(df_today)
-        
-        day_food_net, day_water_net = calculate_intake_breakdown(df_today)
-        day_stats['cal'] = df_today['Cal_Sub'].sum()
-        day_stats['food'] = day_food_net
-        day_stats['water'] = day_water_net
-        day_stats['prot'] = df_today['Prot_Sub'].sum()
-        day_stats['fat'] = df_today['Fat_Sub'].sum()
-
-        if 'Category' in df_today.columns:
-            df_supp = df_today[df_today['Category'] == '保養品']
-            if not df_supp.empty:
-                counts = df_supp.groupby('Item_Name')['Net_Quantity'].sum()
-                supp_list = [{'name': k, 'count': v} for k, v in counts.items()]
-            
-            df_med = df_today[df_today['Category'] == '藥品']
-            if not df_med.empty:
-                counts = df_med.groupby('Item_Name')['Net_Quantity'].sum()
-                med_list = [{'name': k, 'count': v} for k, v in counts.items()]
 
 # ----------------------------------------------------
 # 2. 佈局實作
 # ----------------------------------------------------
 date_display = record_date.strftime("%Y年 %m月 %d日")
 
-# [修改] 呼叫 render_header 時傳入設定
 st.markdown(render_header(date_display, current_pet_name, current_pet_image), unsafe_allow_html=True)
 
 col_dash, col_input = st.columns([4, 3], gap="medium")
@@ -664,11 +628,9 @@ with col_dash:
 # --- 右欄：操作區 ---
 with col_input:
    
-    # 1. 定義餐別清單
     meal_options = ["第一餐", "第二餐", "第三餐", "第四餐", "第五餐", 
                     "第六餐", "第七餐", "第八餐", "第九餐", "第十餐", "點心1", "點心2"]
 
-    # 2. 準備餐別狀態資料
     meal_status_map = {}
     recorded_meals_list = []
 
@@ -685,7 +647,6 @@ with col_input:
             t_str = str(row['Time'])[:5]
             meal_status_map[m_name] = f" (已記) (完食: {t_str})"
 
-    # 3. 自動跳到下一餐邏輯
     default_meal_name = meal_options[0]
     for m in meal_options:
         if m not in recorded_meals_list:
@@ -695,7 +656,6 @@ with col_input:
     if 'meal_selector' not in st.session_state:
         st.session_state.meal_selector = default_meal_name
 
-    # --- UI 顯示區 ---
     with st.container(border=True):
         st.markdown("#### 🍽️ 本日飲食紀錄")
         
