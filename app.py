@@ -1,5 +1,5 @@
-# Python 程式碼 (公開體驗版 Public Beta) - V1.2
-# 修正重點：設定資料改存於獨立分頁 "App_Config"，避免破壞 DB_Items 結構
+# Python 程式碼 (公開體驗版 Public Beta) - V1.3
+# 修正重點：補回遺失的數據計算區塊 (day_stats)，修復 NameError
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -114,12 +114,11 @@ def calculate_intake_breakdown(df):
     final_food_net = input_food + (total_waste * ratio_food)
     return final_food_net, final_water_net
 
-# --- 設定存取與圖片處理工具 (修正版) ---
+# --- 設定存取與圖片處理工具 ---
 def process_image_to_base64(uploaded_file):
     try:
         image = Image.open(uploaded_file)
         image = ImageOps.exif_transpose(image) 
-        # [修正] 縮小到 100x100，減少字串長度，提高成功率
         thumb = ImageOps.fit(image, (100, 100), Image.Resampling.LANCZOS)
         buffered = io.BytesIO()
         thumb.save(buffered, format="PNG")
@@ -129,22 +128,21 @@ def process_image_to_base64(uploaded_file):
         st.error(f"圖片處理失敗: {e}")
         return None
 
-# [修正] 改用獨立分頁 "App_Config" 存取設定
 def save_user_settings(name, image_data, spreadsheet):
     try:
         try:
             sh_config = spreadsheet.worksheet("App_Config")
         except:
-            # 如果分頁不存在，自動建立
             sh_config = spreadsheet.add_worksheet(title="App_Config", rows=10, cols=2)
         
-        # A1 存名字, B1 存圖片
         sh_config.update('A1', name)
         if image_data:
             sh_config.update('B1', image_data)
         st.toast("✅ 設定已儲存！")
+        return True # 回傳成功
     except Exception as e:
         st.error(f"設定儲存失敗: {e}")
+        return False
 
 def load_user_settings(spreadsheet):
     try:
@@ -153,7 +151,6 @@ def load_user_settings(spreadsheet):
         image_data = sh_config.acell('B1').value
         return name, image_data
     except:
-        # 找不到分頁或資料，回傳預設值
         return None, None
 
 # --- HTML 渲染函式 ---
@@ -234,7 +231,6 @@ def load_data_from_url(sheet_url):
         
         db_data = sheet_db.get_all_records()
         log_data = sheet_log.get_all_records()
-        # [修正] 多回傳 spreadsheet 物件，以便操作分頁
         return pd.DataFrame(db_data), pd.DataFrame(log_data), sheet_log, sheet_db, spreadsheet.title, spreadsheet
     except Exception as e:
         return None, None, None, None, str(e), None
@@ -272,7 +268,6 @@ def login_page():
                 st.error("請輸入網址")
             else:
                 with st.spinner("連線測試中..."):
-                    # [修正] 接收 6 個回傳值
                     _items, _log, _sh_log, _sh_db, _msg, _spreadsheet = load_data_from_url(url_input)
                     if _items is not None:
                         st.session_state.user_sheet_url = url_input
@@ -289,11 +284,10 @@ if not st.session_state.is_logged_in:
     st.stop() # 未登入前停止執行下方程式碼
 
 # --- 已登入：讀取使用者資料 ---
-# [修正] 接收 6 個回傳值，包含 spreadsheet
 df_items, df_log, sheet_log, sheet_db, sheet_title, spreadsheet = load_data_from_url(st.session_state.user_sheet_url)
 
 if df_items is None:
-    st.error(f"資料讀取錯誤：{sheet_title}") # sheet_title 這裡是錯誤訊息
+    st.error(f"資料讀取錯誤：{sheet_title}")
     st.session_state.is_logged_in = False
     if st.button("回登入頁"): st.rerun()
     st.stop()
@@ -587,9 +581,11 @@ with st.sidebar:
                 if uploaded_photo:
                     final_img_str = process_image_to_base64(uploaded_photo)
                 
-                save_user_settings(new_name, final_img_str, spreadsheet)
-                st.session_state.pet_settings = (new_name, final_img_str)
-                st.rerun()
+                # 更新並檢查是否成功
+                success = save_user_settings(new_name, final_img_str, spreadsheet)
+                if success:
+                    st.session_state.pet_settings = (new_name, final_img_str)
+                    st.rerun()
 
     st.divider()
 
@@ -608,7 +604,45 @@ with st.sidebar:
         st.rerun()
 
 # ----------------------------------------------------
-# 2. 佈局實作
+# 3. 數據準備 (補回遺失的區塊)
+# ----------------------------------------------------
+df_today = pd.DataFrame()
+day_stats = {'cal':0, 'food':0, 'water':0, 'prot':0, 'fat':0}
+meal_stats = {'name': '尚未選擇', 'cal':0, 'food':0, 'water':0, 'prot':0, 'fat':0}
+supp_list = []
+med_list = []
+
+if not df_log.empty:
+    df_today = df_log[df_log['Date'] == str_date_filter].copy()
+    if not df_today.empty:
+        if 'Category' in df_today.columns:
+            df_today['Category'] = df_today['Category'].astype(str).str.strip()
+        
+        for col in ['Cal_Sub', 'Net_Quantity', 'Prot_Sub', 'Fat_Sub']:
+            df_today[col] = pd.to_numeric(df_today[col], errors='coerce').fillna(0)
+        
+        df_today = clean_duplicate_finish_records(df_today)
+        
+        day_food_net, day_water_net = calculate_intake_breakdown(df_today)
+        day_stats['cal'] = df_today['Cal_Sub'].sum()
+        day_stats['food'] = day_food_net
+        day_stats['water'] = day_water_net
+        day_stats['prot'] = df_today['Prot_Sub'].sum()
+        day_stats['fat'] = df_today['Fat_Sub'].sum()
+
+        if 'Category' in df_today.columns:
+            df_supp = df_today[df_today['Category'] == '保養品']
+            if not df_supp.empty:
+                counts = df_supp.groupby('Item_Name')['Net_Quantity'].sum()
+                supp_list = [{'name': k, 'count': v} for k, v in counts.items()]
+            
+            df_med = df_today[df_today['Category'] == '藥品']
+            if not df_med.empty:
+                counts = df_med.groupby('Item_Name')['Net_Quantity'].sum()
+                med_list = [{'name': k, 'count': v} for k, v in counts.items()]
+
+# ----------------------------------------------------
+# 4. 佈局實作
 # ----------------------------------------------------
 date_display = record_date.strftime("%Y年 %m月 %d日")
 
