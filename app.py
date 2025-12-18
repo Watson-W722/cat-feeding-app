@@ -128,16 +128,21 @@ def process_image_to_base64(uploaded_file):
         st.error(f"圖片處理失敗: {e}")
         return None
 
+# [修正] 改用 update_acell，兼容 gspread 所有版本
 def save_user_settings(name, image_data, spreadsheet):
     try:
         try:
             sh_config = spreadsheet.worksheet("App_Config")
         except:
+            # 如果分頁不存在，自動建立
             sh_config = spreadsheet.add_worksheet(title="App_Config", rows=10, cols=2)
         
-        sh_config.update('A1', name)
+        # [關鍵修正] 將 .update 改為 .update_acell
+        sh_config.update_acell('A1', name)
+        
         if image_data:
-            sh_config.update('B1', image_data)
+            sh_config.update_acell('B1', image_data)
+            
         st.toast("✅ 設定已儲存！")
         return True # 回傳成功
     except Exception as e:
