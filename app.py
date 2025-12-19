@@ -1,5 +1,5 @@
 # Python 程式碼 (公開體驗版 Public Beta) - V1.6.1
-# 修正重點：補回 meal_stats 初始化變數，修復 NameError
+# 修正重點：補回 meal_stats 初始化變數，修復 NameError 與下方畫面空白問題
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -223,7 +223,6 @@ def render_daily_stats_html(day_stats):
     }
     
     def get_stat_html(icon, label, value, unit, color_class):
-        # 單行字串拼接，確保安全
         return f'<div class="stat-item"><div style="margin-bottom:4px;"><div class="stat-header"><div class="stat-icon {color_class}">{icons[icon]}</div>{label}</div></div><div style="display:flex; align-items:baseline; justify-content:center;"><span class="stat-value">{value}</span><span class="stat-unit">{unit}</span></div></div>'
         
     html = '<div class="grid-row-3">'
@@ -250,6 +249,12 @@ def render_supp_med_html(supp_list, med_list):
     html += f'<div><div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;font-size:12px;font-weight:700;color:#047857;">🌿 保養品</div><div class="tag-container">{get_tag_html(supp_list, "tag-green")}</div></div>'
     html += f'<div style="border-left:1px solid #f1f5f9;padding-left:20px;"><div><div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;font-size:12px;font-weight:700;color:#be123c;">💊 藥品</div><div class="tag-container">{get_tag_html(med_list, "tag-red")}</div></div></div></div>'
     return html
+
+def render_meal_stats_simple(meal_stats):
+    html = '<div class="simple-grid">'
+    for l, v, u in [("熱量", int(meal_stats['cal']), "kcal"), ("食物", f"{meal_stats['food']:.1f}", "g"), ("飲水", f"{meal_stats['water']:.1f}", "ml"), ("蛋白", f"{meal_stats['prot']:.1f}", "g"), ("脂肪", f"{meal_stats['fat']:.1f}", "g")]:
+        html += f'<div class="simple-item"><div class="simple-label">{l}</div><div class="simple-value">{v}<span class="simple-unit">{u}</span></div></div>'
+    return html + '</div>'
 
 # ==========================================
 #      連線與登入邏輯
