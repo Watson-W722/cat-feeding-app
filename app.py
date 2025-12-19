@@ -634,12 +634,19 @@ with col_dash:
         
         # 資料準備
         if not df_pet_log.empty:
-            # 轉換日期格式
-            df_pet_log['Date_dt'] = pd.to_datetime(df_pet_log['Date'], format='%Y/%m/%d', errors='coerce').dt.date
+           # [修正] 更嚴謹的日期處理，防止因為空值導致崩潰
+            # 1. 先嘗試轉為 datetime，錯誤的會變成 NaT
+            temp_dt = pd.to_datetime(df_pet_log['Date'], format='%Y/%m/%d', errors='coerce')
             
-            # 篩選區間
-            mask_range = (df_pet_log['Date_dt'] >= start_date) & (df_pet_log['Date_dt'] <= end_date)
-            df_trend = df_pet_log[mask_range].copy()
+            # 2. 只保留轉換成功的資料 (刪除 NaT/空值)
+            df_valid = df_pet_log[temp_dt.notna()].copy()
+            
+            # 3. 只有合法的資料才轉成 date 物件
+            df_valid['Date_dt'] = temp_dt[temp_dt.notna()].dt.date
+            
+            # 4. 進行區間篩選 (現在比較是安全的了)
+            mask_range = (df_valid['Date_dt'] >= start_date) & (df_valid['Date_dt'] <= end_date)
+            df_trend = df_valid[mask_range].copy()
             
             if not df_trend.empty:
                 # 計算每日統計
