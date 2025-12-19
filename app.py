@@ -1040,7 +1040,7 @@ with col_input:
                                 st.session_state.dash_stat_open = False
                                 st.session_state.dash_med_open = False
                                 st.session_state.meal_stats_open = False
-                                load_data.clear()
+                                # load_data.clear()
                                 st.session_state.just_saved = True 
                                 st.rerun()
                             except Exception as e:
