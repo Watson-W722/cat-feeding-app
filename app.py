@@ -622,7 +622,7 @@ else:
 # 4. 佈局實作 - [V1.4] 趨勢圖
 # ----------------------------------------------------
 date_display = record_date.strftime("%Y年 %m月 %d日")
-st.markdown(render_header(date_display, selected_pet, current_pet_image), unsafe_allow_html=True)
+st.markdown(render_header(selected_pet, current_pet_image), unsafe_allow_html=True)
 
 col_dash, col_input = st.columns([4, 3], gap="medium")
 
