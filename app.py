@@ -1,5 +1,5 @@
-# Python 程式碼 (公開體驗版 Public Beta) - V1.4
-# 重大更新：支援多寵物切換、新增趨勢分析圖表、移除單日總覽卡片
+# Python 程式碼 (公開體驗版 Public Beta) - V1.5
+# 修正重點：補回所有遺失的 HTML 渲染函式，修復 Icon 跑版問題，確保程式邏輯完整
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -40,11 +40,46 @@ def inject_custom_css():
         h4 { font-size: 20px !important; font-weight: 700 !important; color: var(--navy) !important; padding-bottom: 0.5rem; margin-bottom: 0rem; }
         div[data-testid="stVerticalBlock"] > div[style*="background-color"] { background: white; border-radius: 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.04); border: 1px solid rgba(1, 33, 114, 0.1); padding: 24px; }
         
-        /* 趨勢圖樣式優化 */
-        div[data-testid="stChart"] { background: white; border-radius: 12px; padding: 10px; }
+        /* 數據網格優化 */
+        .grid-row-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px; }
+        .grid-row-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 0px; }
         
-        .main-header { display: flex; align-items: center; gap: 12px; margin-top: 5px; margin-bottom: 24px; padding: 20px; background: white; border-radius: 16px; border: 1px solid rgba(1, 33, 114, 0.1); box-shadow: 0 4px 6px rgba(0,0,0,0.02); }
-        .header-icon { background: var(--navy); padding: 12px; border-radius: 12px; color: white !important; display: flex; }
+        @media (max-width: 640px) { 
+            .grid-row-3 { gap: 6px; } 
+            .stat-item { padding: 10px 4px !important; } 
+            .stat-value { font-size: 24px !important; } 
+            .stat-header { font-size: 12px !important; } 
+            div[data-testid="stVerticalBlock"] > div[style*="background-color"] { padding: 16px; } 
+        }
+
+        /* 數據單項卡片樣式修正 */
+        .stat-item { 
+            background: #fff; 
+            border: 2px solid #e2e8f0; 
+            border-radius: 12px; 
+            padding: 16px 12px; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            justify-content: center;
+            text-align: center;
+            height: 100%;
+        }
+        
+        .stat-header { 
+            display: flex; 
+            align-items: center; 
+            justify-content: center;
+            gap: 6px; 
+            margin-bottom: 8px; 
+            font-size: 14px; 
+            font-weight: 700; 
+            color: var(--text-muted) !important; 
+            text-transform: uppercase; 
+        }
+        
+        .stat-value { font-size: 32px; font-weight: 900; color: var(--navy) !important; line-height: 1.1; }
+        .stat-unit { font-size: 14px; font-weight: 600; color: var(--text-muted) !important; margin-left: 2px; }
         
         .simple-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0; background: #FDFDF9; border: 1px solid var(--beige); border-radius: 12px; padding: 10px 0; margin-bottom: 15px; width: 100%; }
         .simple-item { text-align: center; padding: 0 2px; border-right: 1px solid rgba(1, 33, 114, 0.1); }
@@ -52,6 +87,21 @@ def inject_custom_css():
         .simple-label { font-size: 11px; color: var(--text-muted) !important; font-weight: 700; }
         .simple-value { font-size: 16px; color: var(--navy) !important; font-weight: 800; }
         .simple-unit { font-size: 10px; color: var(--text-muted) !important; margin-left: 1px; }
+        
+        .tag-container { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+        .tag { display: inline-flex; align-items: center; padding: 6px 12px; border-radius: 8px; font-size: 14px; font-weight: 600; border: 1px solid transparent; color: var(--navy) !important; }
+        .tag-count { background: rgba(255,255,255,0.8); padding: 0px 6px; border-radius: 4px; font-size: 12px; font-weight: 800; margin-left: 6px; color: var(--navy) !important; }
+        
+        .bg-orange { background: #fff7ed; color: #f97316; } 
+        .bg-blue { background: #eff6ff; color: #3b82f6; } 
+        .bg-cyan { background: #ecfeff; color: #06b6d4; } 
+        .bg-red { background: #fef2f2; color: #ef4444; } 
+        .bg-yellow { background: #fefce8; color: #eab308; }
+        .tag-green { background: #ecfdf5; border: 1px solid #d1fae5; color: #047857 !important; } 
+        .tag-red { background: #fff1f2; border: 1px solid #ffe4e6; color: #be123c !important; }
+        
+        .main-header { display: flex; align-items: center; gap: 12px; margin-top: 5px; margin-bottom: 24px; padding: 20px; background: white; border-radius: 16px; border: 1px solid rgba(1, 33, 114, 0.1); box-shadow: 0 4px 6px rgba(0,0,0,0.02); }
+        .header-icon { background: var(--navy); padding: 12px; border-radius: 12px; color: white !important; display: flex; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -121,15 +171,13 @@ def process_image_to_base64(uploaded_file):
         st.error(f"圖片處理失敗: {e}")
         return None
 
-# [V1.4] 修正：讀取 App_Config 支援多寵物列表
-# 格式預設：A欄=名字, B欄=圖片 (Row 1, 2, 3...)
 def get_pet_list(spreadsheet):
     try:
         sh_config = spreadsheet.worksheet("App_Config")
-        data = sh_config.get_all_values() # 讀取所有列
+        data = sh_config.get_all_values()
         pets = []
         for row in data:
-            if row and row[0].strip(): # 如果名字不為空
+            if row and row[0].strip():
                 img = row[1] if len(row) > 1 else None
                 pets.append({"name": row[0], "image": img})
         if not pets: return [{"name": "大文", "image": None}]
@@ -137,7 +185,6 @@ def get_pet_list(spreadsheet):
     except:
         return [{"name": "大文", "image": None}]
 
-# [V1.4] 修正：新增或更新寵物設定
 def save_pet_to_config(name, image_data, spreadsheet):
     try:
         try:
@@ -145,12 +192,10 @@ def save_pet_to_config(name, image_data, spreadsheet):
         except:
             sh_config = spreadsheet.add_worksheet(title="App_Config", rows=20, cols=2)
         
-        # 讀取現有名單，檢查是否已存在
-        cell_list = sh_config.col_values(1) # 讀取 A 欄所有名字
-        
-        update_row = len(cell_list) + 1 # 預設寫在最後一行
+        cell_list = sh_config.col_values(1)
+        update_row = len(cell_list) + 1
         if name in cell_list:
-            update_row = cell_list.index(name) + 1 # 找到存在的行數
+            update_row = cell_list.index(name) + 1
             
         sh_config.update_acell(f'A{update_row}', name)
         if image_data:
@@ -162,7 +207,10 @@ def save_pet_to_config(name, image_data, spreadsheet):
         st.error(f"設定儲存失敗: {e}")
         return False
 
-# --- HTML 渲染函式 ---
+# ==========================================
+#      HTML 渲染函式 (所有 View 相關)
+# ==========================================
+
 def render_header(pet_name, pet_image=None):
     default_svg = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5c.67 0 1.35.09 2 .26 1.78-2 5.03-2.84 6.42-2.26 1.4.58-.42 7-.42 7 .57 1.07 1 2.24 1 3.44C21 17.9 16.97 21 12 21S3 17.9 3 13.44C3 12.24 3.43 11.07 4 10c0 0-1.82-6.42-.42-7 1.39-.58 4.64.26 6.42 2.26.65-.17 1.33-.26 2-.26z"/><path d="M9 13h.01"/><path d="M15 13h.01"/></svg>'
     
@@ -189,17 +237,56 @@ def render_header(pet_name, pet_image=None):
     return html
 
 def render_daily_stats_html(day_stats):
+    # [修正] 簡化 SVG 路徑，確保不會因為字串過長或格式問題導致跑版
     icons = {
         "flame": '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.1.2-2.2.6-3.3a1 1 0 0 0 2.1.7z"></path></svg>',
         "utensils": '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>',
         "droplets": '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 16.3c2.2 0 4-1.83 4-4.05 0-1.16-.57-2.26-1.71-3.19S7.29 6.75 7 5.3c-.29 1.45-1.14 2.84-2.29 3.76S3 11.1 3 12.25c0 2.22 1.8 4.05 4 4.05z"/><path d="M12.56 6.6A10.97 10.97 0 0 0 14 3.02c.5 2.5 2 4.9 4 6.5s3 3.5 3 5.5a6.98 6.98 0 0 1-11.91 4.97"/></svg>',
-        "beef": '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12.5" cy="8.5" r="2.5"/><path d="M12.5 2a6.5 6.5 0 0 0-6.22 4.6c-1.1 3.13-.78 6.43 1.48 9.17l2.92 2.92c.65.65 1.74.65 2.39 0l.97-.97a6 6 0 0 1 4.24-1.76h.04a6 6 0 0 0 3.79-1.35l.81-.81a2.5 2.5 0 0 0-3.54-3.54l-.47.47a1.5 1.5 0 0 1-2.12 0l-.88-.88a2.5 2.5 0 0 1 0-3.54l.84-.84c.76-.76.88-2 .2-2.86A6.5 6.5 0 0 0 12.5 2Z"/></svg>',
-        "dna": '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 15c6.638 0 12-5.362 12-12"/><path d="M10 21c6.638 0 12-5.362 12-12"/><path d="m2 3 20 18"/><path d="M12.818 8.182a4.92 4.92 0 0 0-1.636-1.636"/><path d="M16.364 11.728a9.862 9.862 0 0 0-3.092-3.092"/><path d="M9.272 15.364a9.862 9.862 0 0 0-3.092-3.092"/><path d="M12.818 18.91a4.92 4.92 0 0 0-1.636-1.636"/></svg>'
+        "beef": '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z"/><path d="M12 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z"/></svg>',
+        "dna": '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>'
     }
+    
     def get_stat_html(icon, label, value, unit, color_class):
-        return f'<div class="stat-item"><div><div class="stat-header"><div class="stat-icon {color_class}">{icons[icon]}</div>{label}</div><div style="display:flex; align-items:baseline; justify-content:center;"><span class="stat-value">{value}</span><span class="stat-unit">{unit}</span></div></div></div>'
-    html = '<div class="grid-row-3">' + get_stat_html("flame", "熱量", int(day_stats['cal']), "kcal", "bg-orange") + get_stat_html("utensils", "食物", f"{day_stats['food']:.1f}", "g", "bg-blue") + get_stat_html("droplets", "飲水", f"{day_stats['water']:.1f}", "ml", "bg-cyan") + '</div>'
-    html += '<div class="grid-row-2">' + get_stat_html("beef", "蛋白質", f"{day_stats['prot']:.1f}", "g", "bg-red") + get_stat_html("dna", "脂肪", f"{day_stats['fat']:.1f}", "g", "bg-yellow") + '</div>'
+        # [修正] 調整 display 屬性，確保 icon 和 label 不會擠在一起
+        return f'''
+        <div class="stat-item">
+            <div style="margin-bottom:4px;">
+                <div class="stat-header">
+                    <div class="stat-icon {color_class}">{icons[icon]}</div>
+                    {label}
+                </div>
+            </div>
+            <div style="display:flex; align-items:baseline; justify-content:center;">
+                <span class="stat-value">{value}</span>
+                <span class="stat-unit">{unit}</span>
+            </div>
+        </div>
+        '''
+        
+    html = '<div class="grid-row-3">'
+    html += get_stat_html("flame", "熱量", int(day_stats['cal']), "kcal", "bg-orange")
+    html += get_stat_html("utensils", "食物", f"{day_stats['food']:.1f}", "g", "bg-blue")
+    html += get_stat_html("droplets", "飲水", f"{day_stats['water']:.1f}", "ml", "bg-cyan")
+    html += '</div>'
+    
+    html += '<div class="grid-row-2">'
+    html += get_stat_html("beef", "蛋白質", f"{day_stats['prot']:.1f}", "g", "bg-red")
+    html += get_stat_html("dna", "脂肪", f"{day_stats['fat']:.1f}", "g", "bg-yellow")
+    html += '</div>'
+    return html
+
+# [修正] 補回此函式，解決 NameError
+def render_supp_med_html(supp_list, med_list):
+    def get_tag_html(items, type_class):
+        if not items: return '<span style="color:#5A6B8C; font-size:13px;">無</span>'
+        tags = ""
+        for item in items:
+            tags += f'<span class="tag {type_class}">{item["name"]}<span class="tag-count">x{int(item["count"])}</span></span>'
+        return tags
+    
+    html = '<div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px;">'
+    html += f'<div><div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;font-size:12px;font-weight:700;color:#047857;">🌿 保養品</div><div class="tag-container">{get_tag_html(supp_list, "tag-green")}</div></div>'
+    html += f'<div style="border-left:1px solid #f1f5f9;padding-left:20px;"><div><div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;font-size:12px;font-weight:700;color:#be123c;">💊 藥品</div><div class="tag-container">{get_tag_html(med_list, "tag-red")}</div></div></div></div>'
     return html
 
 def render_meal_stats_simple(meal_stats):
@@ -325,7 +412,7 @@ def get_previous_meal_density(df_log_data):
     try:
         _df = df_log_data.copy()
         _df['Timestamp_dt'] = pd.to_datetime(_df['Timestamp'], errors='coerce')
-        # [V1.4] 修正：剩食計算也要過濾寵物
+        # 剩食計算也要過濾寵物
         current_pet = st.session_state.get('selected_pet_name', '')
         if 'Pet_Name' in _df.columns and current_pet:
              _df = _df[_df['Pet_Name'] == current_pet]
@@ -447,7 +534,7 @@ def clear_finish_inputs_callback():
     st.session_state.waste_gross = None
     st.session_state.waste_tare = None
 
-# [V1.4] 修正：寫入時包含 Pet_Name
+# 寫入時包含 Pet_Name
 def save_finish_callback(finish_type, waste_net, waste_cal, bowl_w, meal_n, finish_time_str, finish_date_obj, record_date_obj):
     if finish_type == "有剩餘 (需秤重)" and waste_net <= 0:
         st.session_state.finish_error = "剩餘重量計算錯誤，請檢查輸入數值。"
@@ -463,7 +550,6 @@ def save_finish_callback(finish_type, waste_net, waste_cal, bowl_w, meal_n, fini
     item_id_code = "WASTE" if finish_type == "有剩餘 (需秤重)" else "FINISH"
     category_code = "剩食" if finish_type == "有剩餘 (需秤重)" else "完食"
     
-    # 取得目前寵物
     current_pet = st.session_state.get('selected_pet_name', '大文')
 
     row = [
@@ -476,7 +562,7 @@ def save_finish_callback(finish_type, waste_net, waste_cal, bowl_w, meal_n, fini
         final_waste_net, final_waste_cal, 
         0, 0, 0, "",
         "完食紀錄", finish_time_str, 
-        current_pet # [V1.4] 新增欄位
+        current_pet 
     ]
     
     try:
@@ -487,7 +573,6 @@ def save_finish_callback(finish_type, waste_net, waste_cal, bowl_w, meal_n, fini
             meal_idx = header.index('Meal_Name')
             item_idx = header.index('ItemID')
             name_idx = header.index('Item_Name')
-            # [V1.4] 嘗試取得 Pet_Name 欄位，沒有則忽略
             try: pet_idx = header.index('Pet_Name')
             except: pet_idx = -1
         except ValueError:
@@ -496,7 +581,6 @@ def save_finish_callback(finish_type, waste_net, waste_cal, bowl_w, meal_n, fini
         rows_to_delete = []
         for i in range(len(current_data) - 1, 0, -1):
             r = current_data[i]
-            # [V1.4] 刪除檢查：如果 Sheet 有 Pet_Name 欄位，也要比對寵物名字
             is_pet_match = True
             if pet_idx != -1 and len(r) > pet_idx:
                 is_pet_match = (r[pet_idx] == current_pet)
@@ -566,7 +650,7 @@ with st.sidebar:
     
     st.divider()
 
-    # [V1.4] 寵物切換器
+    # 寵物切換器
     selected_pet = st.selectbox("🐾 選擇寵物", pet_names, key="selected_pet_name")
     
     # 找到對應的圖片
@@ -588,7 +672,7 @@ with st.sidebar:
 
     st.divider()
 
-    # [V1.4] 趨勢圖 - 日期區間選擇
+    # 趨勢圖 - 日期區間選擇
     st.header("📅 趨勢與紀錄")
     # 預設過去7天
     default_end = get_tw_time().date()
@@ -600,13 +684,11 @@ with st.sidebar:
         max_value=default_end
     )
     
-    # 判斷日期範圍有效性
     if isinstance(date_range, tuple) and len(date_range) == 2:
         start_date, end_date = date_range
     else:
-        start_date, end_date = default_start, default_end # Fallback
+        start_date, end_date = default_start, default_end 
 
-    # 單日編輯用日期 (固定為 End Date 或另外選)
     st.caption("👇 下方為「本日紀錄」的日期")
     record_date = st.date_input("編輯日期", default_end)
     str_date_filter = record_date.strftime("%Y/%m/%d")
@@ -619,21 +701,17 @@ with st.sidebar:
         st.rerun()
 
 # ----------------------------------------------------
-# [V1.4] 數據過濾 (針對選定的寵物)
+# 數據過濾
 # ----------------------------------------------------
-# 全域資料過濾：只保留選定寵物的資料
-# 如果 Log_Data 沒有 Pet_Name 欄位，則視為全部都是該寵物 (相容舊版)
 if 'Pet_Name' in df_log.columns:
     df_pet_log = df_log[df_log['Pet_Name'] == selected_pet].copy()
-    # 如果是剛新增的寵物，可能還沒有資料，嘗試抓空白的 (相容舊資料)
     if df_pet_log.empty and selected_pet == pet_names[0]: 
-         # 假設第一隻寵物擁有所有「未標記」的資料
          df_pet_log = df_log[ (df_log['Pet_Name'] == selected_pet) | (df_log['Pet_Name'] == "") | (df_log['Pet_Name'].isna()) ].copy()
 else:
-    df_pet_log = df_log.copy() # 舊版 Sheet，全部視為當前寵物
+    df_pet_log = df_log.copy() 
 
 # ----------------------------------------------------
-# 4. 佈局實作 - [V1.4] 趨勢圖
+# 4. 佈局實作
 # ----------------------------------------------------
 date_display = record_date.strftime("%Y年 %m月 %d日")
 st.markdown(render_header(selected_pet, current_pet_image), unsafe_allow_html=True)
@@ -642,35 +720,24 @@ col_dash, col_input = st.columns([4, 3], gap="medium")
 
 # --- 左欄：趨勢與總覽 ---
 with col_dash:
-    # [V1.4] 新增趨勢分析區塊
+    # 趨勢分析區塊
     with st.container(border=True):
         st.markdown("#### 📈 健康趨勢分析")
         
-        # 資料準備
         if not df_pet_log.empty:
-           # [修正] 更嚴謹的日期處理，防止因為空值導致崩潰
-            # 1. 先嘗試轉為 datetime，錯誤的會變成 NaT
+            # 日期防呆處理
             temp_dt = pd.to_datetime(df_pet_log['Date'], format='%Y/%m/%d', errors='coerce')
-            
-            # 2. 只保留轉換成功的資料 (刪除 NaT/空值)
             df_valid = df_pet_log[temp_dt.notna()].copy()
-            
-            # 3. 只有合法的資料才轉成 date 物件
             df_valid['Date_dt'] = temp_dt[temp_dt.notna()].dt.date
             
-            # 4. 進行區間篩選 (現在比較是安全的了)
             mask_range = (df_valid['Date_dt'] >= start_date) & (df_valid['Date_dt'] <= end_date)
             df_trend = df_valid[mask_range].copy()
             
             if not df_trend.empty:
-                # 計算每日統計
-                # 先把數值轉 float
                 for c in ['Cal_Sub', 'Net_Quantity', 'Prot_Sub', 'Fat_Sub']:
                     df_trend[c] = pd.to_numeric(df_trend[c], errors='coerce').fillna(0)
                 
                 df_trend = clean_duplicate_finish_records(df_trend)
-                
-                # 每日加總
                 daily_groups = df_trend.groupby('Date_dt')
                 
                 trend_data = []
@@ -685,7 +752,6 @@ with col_dash:
                 
                 df_chart = pd.DataFrame(trend_data).set_index('Date')
                 
-                # 顯示圖表 (Tabs)
                 tab1, tab2 = st.tabs(["🔥 熱量與食量", "💧 飲水量"])
                 with tab1:
                     st.bar_chart(df_chart[['熱量 (kcal)', '食物 (g)']])
@@ -696,7 +762,7 @@ with col_dash:
         else:
             st.info("尚無紀錄")
 
-    # 本日詳細 (維持原本功能，但資料源改為 df_pet_log)
+    # 本日詳細
     df_today = pd.DataFrame()
     day_stats = {'cal':0, 'food':0, 'water':0, 'prot':0, 'fat':0}
     
@@ -731,7 +797,7 @@ with col_dash:
 
     with st.container(border=True):
         st.markdown(f"#### 📅 {date_display} 攝取明細")
-        with st.expander("📝 今日營養攝取", expanded=True): # 預設展開
+        with st.expander("📝 今日營養攝取", expanded=True): 
              st.markdown(render_daily_stats_html(day_stats), unsafe_allow_html=True)
         with st.expander("💊 今日保養與藥品服用", expanded=st.session_state.dash_med_open):
              st.markdown(render_supp_med_html(supp_list, med_list), unsafe_allow_html=True)
@@ -768,7 +834,7 @@ with col_input:
         st.session_state.meal_selector = default_meal_name
 
     with st.container(border=True):
-        st.markdown(f"#### 🍽️ 編輯紀錄 ({selected_pet})") # 標題加上寵物名
+        st.markdown(f"#### 🍽️ 編輯紀錄 ({selected_pet})")
         
         c_meal, c_bowl = st.columns(2)
         with c_meal:
