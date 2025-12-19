@@ -1,5 +1,5 @@
 # Python 程式碼 (公開體驗版 Public Beta) - V1.7
-# 修正重點：UI 重構 (合併趨勢與今日概覽)、修復寫入按鈕的 load_data 錯誤
+# 修正重點：修復 render_header 參數錯誤，並完成 UI 佈局整合 (總覽+趨勢圖)
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -40,8 +40,10 @@ def inject_custom_css():
         h4 { font-size: 20px !important; font-weight: 700 !important; color: var(--navy) !important; padding-bottom: 0.5rem; margin-bottom: 0rem; }
         div[data-testid="stVerticalBlock"] > div[style*="background-color"] { background: white; border-radius: 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.04); border: 1px solid rgba(1, 33, 114, 0.1); padding: 24px; }
         
+        /* 數據網格優化 */
         .grid-row-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px; }
         .grid-row-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 0px; }
+        
         @media (max-width: 640px) { 
             .grid-row-3 { gap: 6px; } 
             .stat-item { padding: 10px 4px !important; } 
@@ -80,8 +82,8 @@ def inject_custom_css():
         .main-header { display: flex; align-items: center; gap: 12px; margin-top: 5px; margin-bottom: 24px; padding: 20px; background: white; border-radius: 16px; border: 1px solid rgba(1, 33, 114, 0.1); box-shadow: 0 4px 6px rgba(0,0,0,0.02); }
         .header-icon { background: var(--navy); padding: 12px; border-radius: 12px; color: white !important; display: flex; }
         
-        /* 調整 Date Input 在卡片內的樣式 */
-        div[data-testid="stDateInput"] label { font-size: 14px !important; font-weight: 700 !important; }
+        /* 讓日期選擇器在卡片內更好看 */
+        div[data-testid="stDateInput"] label { font-weight: bold; color: var(--navy); }
     </style>
     """, unsafe_allow_html=True)
 
@@ -191,7 +193,8 @@ def save_pet_to_config(name, image_data, spreadsheet):
 #      HTML 渲染函式
 # ==========================================
 
-def render_header(pet_name, pet_image=None):
+# [修正] 恢復接收 date_str 參數，以符合下方程式的呼叫
+def render_header(date_str, pet_name, pet_image=None):
     default_svg = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5c.67 0 1.35.09 2 .26 1.78-2 5.03-2.84 6.42-2.26 1.4.58-.42 7-.42 7 .57 1.07 1 2.24 1 3.44C21 17.9 16.97 21 12 21S3 17.9 3 13.44C3 12.24 3.43 11.07 4 10c0 0-1.82-6.42-.42-7 1.39-.58 4.64.26 6.42 2.26.65-.17 1.33-.26 2-.26z"/><path d="M9 13h.01"/><path d="M15 13h.01"/></svg>'
     
     if pet_image:
@@ -210,7 +213,7 @@ def render_header(pet_name, pet_image=None):
         </div>
         <div>
             <div style="font-size:24px; font-weight:800; color:#012172;">{pet_name}的飲食日記</div>
-            <div style="font-size:15px; font-weight:500; color:#5A6B8C;">飲食紀錄與趨勢分析</div>
+            <div style="font-size:15px; font-weight:500; color:#5A6B8C;">{date_str}</div>
         </div>
     </div>
     '''
@@ -623,7 +626,7 @@ with st.sidebar:
     # 寵物設定 (新增/修改)
     with st.expander("⚙️ 寵物管理"):
         new_name = st.text_input("新增/修改寵物名字", value=selected_pet)
-        uploaded_photo = st.file_uploader("上傳大頭照", type=['jpg', 'png', 'jpeg'])
+        uploaded_photo = st.file_uploader("上傳大頭照", type=['jpg', 'png', 'jpeg'], help="將自動裁切為正方形")
         
         if st.button("💾 儲存/新增寵物"):
             with st.spinner("處理中..."):
@@ -636,7 +639,7 @@ with st.sidebar:
 
     st.divider()
 
-    # 編輯日期
+    # 編輯日期 (本日)
     st.header("📅 日期與時間") 
     tw_now = get_tw_time()
     record_date = st.date_input("編輯日期", tw_now) 
@@ -679,7 +682,6 @@ with col_dash:
         day_stats = {'cal':0, 'food':0, 'water':0, 'prot':0, 'fat':0}
         supp_list = [] 
         med_list = []
-        # [修復] 補上這裡，避免下方 NameError
         meal_stats = {'name': '尚未選擇', 'cal':0, 'food':0, 'water':0, 'prot':0, 'fat':0}
         
         if not df_pet_log.empty:
@@ -1042,7 +1044,6 @@ with col_input:
                                 st.session_state.dash_stat_open = False
                                 st.session_state.dash_med_open = False
                                 st.session_state.meal_stats_open = False
-                                # [修正] 用 rerun 代替 load_data.clear()
                                 st.session_state.just_saved = True 
                                 st.rerun()
                             except Exception as e:
