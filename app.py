@@ -1,5 +1,5 @@
-# Python 程式碼 (公開體驗版 Public Beta) - V1.6.1
-# 修正重點：補回 meal_stats 初始化變數，修復 NameError 與下方畫面空白問題
+# Python 程式碼 (公開體驗版 Public Beta) - V1.7
+# 修正重點：UI 重構 (合併趨勢與今日概覽)、修復寫入按鈕的 load_data 錯誤
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -79,6 +79,9 @@ def inject_custom_css():
         
         .main-header { display: flex; align-items: center; gap: 12px; margin-top: 5px; margin-bottom: 24px; padding: 20px; background: white; border-radius: 16px; border: 1px solid rgba(1, 33, 114, 0.1); box-shadow: 0 4px 6px rgba(0,0,0,0.02); }
         .header-icon { background: var(--navy); padding: 12px; border-radius: 12px; color: white !important; display: flex; }
+        
+        /* 調整 Date Input 在卡片內的樣式 */
+        div[data-testid="stDateInput"] label { font-size: 14px !important; font-weight: 700 !important; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -633,30 +636,16 @@ with st.sidebar:
 
     st.divider()
 
-    # 趨勢圖 - 日期區間選擇
-    st.header("📅 趨勢與紀錄")
-    # 預設過去7天
-    default_end = get_tw_time().date()
-    default_start = default_end - timedelta(days=6)
-    
-    date_range = st.date_input(
-        "選擇趨勢區間",
-        value=(default_start, default_end),
-        max_value=default_end
-    )
-    
-    if isinstance(date_range, tuple) and len(date_range) == 2:
-        start_date, end_date = date_range
-    else:
-        start_date, end_date = default_start, default_end 
-
-    st.caption("👇 下方為「本日紀錄」的日期")
-    record_date = st.date_input("編輯日期", default_end)
+    # 編輯日期
+    st.header("📅 日期與時間") 
+    tw_now = get_tw_time()
+    record_date = st.date_input("編輯日期", tw_now) 
     str_date_filter = record_date.strftime("%Y/%m/%d")
     
-    default_sidebar_time = get_tw_time().strftime("%H%M")
+    default_sidebar_time = tw_now.strftime("%H%M")
     raw_record_time = st.text_input("🕒 時間 (如 0618)", value=default_sidebar_time)
     record_time_str = format_time_str(raw_record_time)
+    st.caption(f"將記錄為：{record_time_str}")
     
     if st.button("🔄 重新整理數據", type="primary"):
         st.rerun()
@@ -675,18 +664,75 @@ else:
 # 4. 佈局實作
 # ----------------------------------------------------
 date_display = record_date.strftime("%Y年 %m月 %d日")
-st.markdown(render_header(selected_pet, current_pet_image), unsafe_allow_html=True)
+st.markdown(render_header(date_display, selected_pet, current_pet_image), unsafe_allow_html=True)
 
 col_dash, col_input = st.columns([4, 3], gap="medium")
 
-# --- 左欄：趨勢與總覽 ---
+# --- 左欄：趨勢與總覽 (合併) ---
 with col_dash:
-    # 趨勢分析區塊
+    # 健康總覽 (包含趨勢)
     with st.container(border=True):
-        st.markdown("#### 📈 健康趨勢分析")
+        st.markdown(f"#### 📊 {date_display} 健康總覽")
+        
+        # 1. 今日統計
+        df_today = pd.DataFrame()
+        day_stats = {'cal':0, 'food':0, 'water':0, 'prot':0, 'fat':0}
+        supp_list = [] 
+        med_list = []
+        # [修復] 補上這裡，避免下方 NameError
+        meal_stats = {'name': '尚未選擇', 'cal':0, 'food':0, 'water':0, 'prot':0, 'fat':0}
         
         if not df_pet_log.empty:
-            # 日期防呆處理
+            df_today = df_pet_log[df_pet_log['Date'] == str_date_filter].copy()
+            if not df_today.empty:
+                if 'Category' in df_today.columns:
+                    df_today['Category'] = df_today['Category'].astype(str).str.strip()
+                
+                for col in ['Cal_Sub', 'Net_Quantity', 'Prot_Sub', 'Fat_Sub']:
+                    df_today[col] = pd.to_numeric(df_today[col], errors='coerce').fillna(0)
+                
+                df_today = clean_duplicate_finish_records(df_today)
+                
+                day_food_net, day_water_net = calculate_intake_breakdown(df_today)
+                day_stats['cal'] = df_today['Cal_Sub'].sum()
+                day_stats['food'] = day_food_net
+                day_stats['water'] = day_water_net
+                day_stats['prot'] = df_today['Prot_Sub'].sum()
+                day_stats['fat'] = df_today['Fat_Sub'].sum()
+
+                if 'Category' in df_today.columns:
+                    df_supp = df_today[df_today['Category'] == '保養品']
+                    if not df_supp.empty:
+                        counts = df_supp.groupby('Item_Name')['Net_Quantity'].sum()
+                        supp_list = [{'name': k, 'count': v} for k, v in counts.items()]
+                    
+                    df_med = df_today[df_today['Category'] == '藥品']
+                    if not df_med.empty:
+                        counts = df_med.groupby('Item_Name')['Net_Quantity'].sum()
+                        med_list = [{'name': k, 'count': v} for k, v in counts.items()]
+
+        with st.expander("📝 今日營養攝取", expanded=True): 
+             st.markdown(render_daily_stats_html(day_stats), unsafe_allow_html=True)
+        with st.expander("💊 今日保養與藥品服用", expanded=st.session_state.dash_med_open):
+             st.markdown(render_supp_med_html(supp_list, med_list), unsafe_allow_html=True)
+
+        st.divider()
+        st.markdown("##### 📈 趨勢分析")
+        
+        # 2. 趨勢分析 (日期選擇移到這裡)
+        default_end = get_tw_time().date()
+        default_start = default_end - timedelta(days=6)
+        
+        c_date, c_blank = st.columns([1, 1])
+        with c_date:
+            date_range = st.date_input("選擇區間", value=(default_start, default_end), max_value=default_end)
+        
+        if isinstance(date_range, tuple) and len(date_range) == 2:
+            start_date, end_date = date_range
+        else:
+            start_date, end_date = default_start, default_end
+
+        if not df_pet_log.empty:
             temp_dt = pd.to_datetime(df_pet_log['Date'], format='%Y/%m/%d', errors='coerce')
             df_valid = df_pet_log[temp_dt.notna()].copy()
             df_valid['Date_dt'] = temp_dt[temp_dt.notna()].dt.date
@@ -722,50 +768,6 @@ with col_dash:
                 st.info("此區間無資料")
         else:
             st.info("尚無紀錄")
-
-    # 本日詳細
-    df_today = pd.DataFrame()
-    day_stats = {'cal':0, 'food':0, 'water':0, 'prot':0, 'fat':0}
-    # [修正] 補上 meal_stats 初始化
-    meal_stats = {'name': '尚未選擇', 'cal':0, 'food':0, 'water':0, 'prot':0, 'fat':0}
-    supp_list = [] 
-    med_list = []
-    
-    if not df_pet_log.empty:
-        df_today = df_pet_log[df_pet_log['Date'] == str_date_filter].copy()
-        if not df_today.empty:
-            if 'Category' in df_today.columns:
-                df_today['Category'] = df_today['Category'].astype(str).str.strip()
-            
-            for col in ['Cal_Sub', 'Net_Quantity', 'Prot_Sub', 'Fat_Sub']:
-                df_today[col] = pd.to_numeric(df_today[col], errors='coerce').fillna(0)
-            
-            df_today = clean_duplicate_finish_records(df_today)
-            
-            day_food_net, day_water_net = calculate_intake_breakdown(df_today)
-            day_stats['cal'] = df_today['Cal_Sub'].sum()
-            day_stats['food'] = day_food_net
-            day_stats['water'] = day_water_net
-            day_stats['prot'] = df_today['Prot_Sub'].sum()
-            day_stats['fat'] = df_today['Fat_Sub'].sum()
-
-            if 'Category' in df_today.columns:
-                df_supp = df_today[df_today['Category'] == '保養品']
-                if not df_supp.empty:
-                    counts = df_supp.groupby('Item_Name')['Net_Quantity'].sum()
-                    supp_list = [{'name': k, 'count': v} for k, v in counts.items()]
-                
-                df_med = df_today[df_today['Category'] == '藥品']
-                if not df_med.empty:
-                    counts = df_med.groupby('Item_Name')['Net_Quantity'].sum()
-                    med_list = [{'name': k, 'count': v} for k, v in counts.items()]
-
-    with st.container(border=True):
-        st.markdown(f"#### 📅 {date_display} 攝取明細")
-        with st.expander("📝 今日營養攝取", expanded=True): 
-             st.markdown(render_daily_stats_html(day_stats), unsafe_allow_html=True)
-        with st.expander("💊 今日保養與藥品服用", expanded=st.session_state.dash_med_open):
-             st.markdown(render_supp_med_html(supp_list, med_list), unsafe_allow_html=True)
 
 # --- 右欄：操作區 ---
 with col_input:
@@ -1040,7 +1042,7 @@ with col_input:
                                 st.session_state.dash_stat_open = False
                                 st.session_state.dash_med_open = False
                                 st.session_state.meal_stats_open = False
-                                # load_data.clear()
+                                # [修正] 用 rerun 代替 load_data.clear()
                                 st.session_state.just_saved = True 
                                 st.rerun()
                             except Exception as e:
