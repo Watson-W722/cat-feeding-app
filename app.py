@@ -1,5 +1,5 @@
-# Python 程式碼 (公開體驗版 Public Beta) - V1.7
-# 修正重點：修復 render_header 參數錯誤，完成 UI 佈局整合 (總覽+趨勢圖)
+# Python 程式碼 (公開體驗版 Public Beta) - V1.8
+# 修正重點：將趨勢分析區塊放入 st.expander 以支援收合功能
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -191,7 +191,6 @@ def save_pet_to_config(name, image_data, spreadsheet):
 #      HTML 渲染函式
 # ==========================================
 
-# [修正] 恢復接收 date_str 參數
 def render_header(date_str, pet_name, pet_image=None):
     default_svg = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5c.67 0 1.35.09 2 .26 1.78-2 5.03-2.84 6.42-2.26 1.4.58-.42 7-.42 7 .57 1.07 1 2.24 1 3.44C21 17.9 16.97 21 12 21S3 17.9 3 13.44C3 12.24 3.43 11.07 4 10c0 0-1.82-6.42-.42-7 1.39-.58 4.64.26 6.42 2.26.65-.17 1.33-.26 2-.26z"/><path d="M9 13h.01"/><path d="M15 13h.01"/></svg>'
     
@@ -717,57 +716,57 @@ with col_dash:
              st.markdown(render_supp_med_html(supp_list, med_list), unsafe_allow_html=True)
 
         st.divider()
-        st.markdown("##### 📈 趨勢分析")
         
-        # 2. 趨勢分析 (日期選擇移到這裡)
-        default_end = get_tw_time().date()
-        default_start = default_end - timedelta(days=6)
-        
-        c_date, c_blank = st.columns([2, 1])
-        with c_date:
-            date_range = st.date_input("選擇區間", value=(default_start, default_end), max_value=default_end)
-        
-        if isinstance(date_range, tuple) and len(date_range) == 2:
-            start_date, end_date = date_range
-        else:
-            start_date, end_date = default_start, default_end
-
-        if not df_pet_log.empty:
-            temp_dt = pd.to_datetime(df_pet_log['Date'], format='%Y/%m/%d', errors='coerce')
-            df_valid = df_pet_log[temp_dt.notna()].copy()
-            df_valid['Date_dt'] = temp_dt[temp_dt.notna()].dt.date
+        # 2. 趨勢分析
+        with st.expander("📈 趨勢分析", expanded=True):
+            default_end = get_tw_time().date()
+            default_start = default_end - timedelta(days=6)
             
-            mask_range = (df_valid['Date_dt'] >= start_date) & (df_valid['Date_dt'] <= end_date)
-            df_trend = df_valid[mask_range].copy()
+            c_date, c_blank = st.columns([2, 1])
+            with c_date:
+                date_range = st.date_input("選擇區間", value=(default_start, default_end), max_value=default_end)
             
-            if not df_trend.empty:
-                for c in ['Cal_Sub', 'Net_Quantity', 'Prot_Sub', 'Fat_Sub']:
-                    df_trend[c] = pd.to_numeric(df_trend[c], errors='coerce').fillna(0)
-                
-                df_trend = clean_duplicate_finish_records(df_trend)
-                daily_groups = df_trend.groupby('Date_dt')
-                
-                trend_data = []
-                for d, group in daily_groups:
-                    f_net, w_net = calculate_intake_breakdown(group)
-                    trend_data.append({
-                        'Date': d,
-                        '熱量 (kcal)': group['Cal_Sub'].sum(),
-                        '食物 (g)': f_net,
-                        '飲水 (ml)': w_net
-                    })
-                
-                df_chart = pd.DataFrame(trend_data).set_index('Date')
-                
-                tab1, tab2 = st.tabs(["🔥 熱量與食量", "💧 飲水量"])
-                with tab1:
-                    st.bar_chart(df_chart[['熱量 (kcal)', '食物 (g)']])
-                with tab2:
-                    st.line_chart(df_chart['飲水 (ml)'])
+            if isinstance(date_range, tuple) and len(date_range) == 2:
+                start_date, end_date = date_range
             else:
-                st.info("此區間無資料")
-        else:
-            st.info("尚無紀錄")
+                start_date, end_date = default_start, default_end
+
+            if not df_pet_log.empty:
+                temp_dt = pd.to_datetime(df_pet_log['Date'], format='%Y/%m/%d', errors='coerce')
+                df_valid = df_pet_log[temp_dt.notna()].copy()
+                df_valid['Date_dt'] = temp_dt[temp_dt.notna()].dt.date
+                
+                mask_range = (df_valid['Date_dt'] >= start_date) & (df_valid['Date_dt'] <= end_date)
+                df_trend = df_valid[mask_range].copy()
+                
+                if not df_trend.empty:
+                    for c in ['Cal_Sub', 'Net_Quantity', 'Prot_Sub', 'Fat_Sub']:
+                        df_trend[c] = pd.to_numeric(df_trend[c], errors='coerce').fillna(0)
+                    
+                    df_trend = clean_duplicate_finish_records(df_trend)
+                    daily_groups = df_trend.groupby('Date_dt')
+                    
+                    trend_data = []
+                    for d, group in daily_groups:
+                        f_net, w_net = calculate_intake_breakdown(group)
+                        trend_data.append({
+                            'Date': d,
+                            '熱量 (kcal)': group['Cal_Sub'].sum(),
+                            '食物 (g)': f_net,
+                            '飲水 (ml)': w_net
+                        })
+                    
+                    df_chart = pd.DataFrame(trend_data).set_index('Date')
+                    
+                    tab1, tab2 = st.tabs(["🔥 熱量與食量", "💧 飲水量"])
+                    with tab1:
+                        st.bar_chart(df_chart[['熱量 (kcal)', '食物 (g)']])
+                    with tab2:
+                        st.line_chart(df_chart['飲水 (ml)'])
+                else:
+                    st.info("此區間無資料")
+            else:
+                st.info("尚無紀錄")
 
 # --- 右欄：操作區 ---
 with col_input:
