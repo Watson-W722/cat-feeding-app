@@ -1,5 +1,5 @@
-# Python 程式碼 (公開體驗版 Public Beta) - V1.6
-# 修正重點：修復 HTML 字串縮排導致的顯示錯誤，確保所有函式在執行前已定義
+# Python 程式碼 (公開體驗版 Public Beta) - V1.6.1
+# 修正重點：補回 meal_stats 初始化變數，修復 NameError
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -83,7 +83,7 @@ def inject_custom_css():
     """, unsafe_allow_html=True)
 
 # ==========================================
-#      工具函式 (全部移到最上方)
+#      工具函式
 # ==========================================
 
 def safe_float(value):
@@ -185,7 +185,7 @@ def save_pet_to_config(name, image_data, spreadsheet):
         return False
 
 # ==========================================
-#      HTML 渲染函式 (所有 View 相關 - 修正版)
+#      HTML 渲染函式
 # ==========================================
 
 def render_header(pet_name, pet_image=None):
@@ -214,7 +214,6 @@ def render_header(pet_name, pet_image=None):
     return html
 
 def render_daily_stats_html(day_stats):
-    # [修正] 移除所有多餘縮排，改用單行拼接，防止 HTML 跑版
     icons = {
         "flame": '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.1.2-2.2.6-3.3a1 1 0 0 0 2.1.7z"></path></svg>',
         "utensils": '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>',
@@ -224,7 +223,7 @@ def render_daily_stats_html(day_stats):
     }
     
     def get_stat_html(icon, label, value, unit, color_class):
-        # 使用單行字串拼接，確保最安全的渲染結果
+        # 單行字串拼接，確保安全
         return f'<div class="stat-item"><div style="margin-bottom:4px;"><div class="stat-header"><div class="stat-icon {color_class}">{icons[icon]}</div>{label}</div></div><div style="display:flex; align-items:baseline; justify-content:center;"><span class="stat-value">{value}</span><span class="stat-unit">{unit}</span></div></div>'
         
     html = '<div class="grid-row-3">'
@@ -239,7 +238,6 @@ def render_daily_stats_html(day_stats):
     html += '</div>'
     return html
 
-# [修正] 補回 render_supp_med_html，解決 NameError
 def render_supp_med_html(supp_list, med_list):
     def get_tag_html(items, type_class):
         if not items: return '<span style="color:#5A6B8C; font-size:13px;">無</span>'
@@ -252,12 +250,6 @@ def render_supp_med_html(supp_list, med_list):
     html += f'<div><div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;font-size:12px;font-weight:700;color:#047857;">🌿 保養品</div><div class="tag-container">{get_tag_html(supp_list, "tag-green")}</div></div>'
     html += f'<div style="border-left:1px solid #f1f5f9;padding-left:20px;"><div><div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;font-size:12px;font-weight:700;color:#be123c;">💊 藥品</div><div class="tag-container">{get_tag_html(med_list, "tag-red")}</div></div></div></div>'
     return html
-
-def render_meal_stats_simple(meal_stats):
-    html = '<div class="simple-grid">'
-    for l, v, u in [("熱量", int(meal_stats['cal']), "kcal"), ("食物", f"{meal_stats['food']:.1f}", "g"), ("飲水", f"{meal_stats['water']:.1f}", "ml"), ("蛋白", f"{meal_stats['prot']:.1f}", "g"), ("脂肪", f"{meal_stats['fat']:.1f}", "g")]:
-        html += f'<div class="simple-item"><div class="simple-label">{l}</div><div class="simple-value">{v}<span class="simple-unit">{u}</span></div></div>'
-    return html + '</div>'
 
 # ==========================================
 #      連線與登入邏輯
@@ -729,7 +721,9 @@ with col_dash:
     # 本日詳細
     df_today = pd.DataFrame()
     day_stats = {'cal':0, 'food':0, 'water':0, 'prot':0, 'fat':0}
-    supp_list = [] # [修正] 初始化變數，確保不報錯
+    # [修正] 補上 meal_stats 初始化
+    meal_stats = {'name': '尚未選擇', 'cal':0, 'food':0, 'water':0, 'prot':0, 'fat':0}
+    supp_list = [] 
     med_list = []
     
     if not df_pet_log.empty:
@@ -843,6 +837,7 @@ with col_input:
                 view_df.columns = ['品名', '數量', '熱量']
                 st.dataframe(view_df, use_container_width=True, hide_index=True)
 
+        # 本餐小計
         meal_stats['name'] = meal_name
         if not df_meal.empty:
             for col in ['Cal_Sub', 'Net_Quantity', 'Prot_Sub', 'Fat_Sub']:
