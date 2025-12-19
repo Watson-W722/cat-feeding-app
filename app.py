@@ -1,5 +1,5 @@
-# Python 程式碼 (公開體驗版 Public Beta) - V1.3
-# 修正重點：補回遺失的數據計算區塊 (day_stats)，修復 NameError
+# Python 程式碼 (公開體驗版 Public Beta) - V1.4
+# 重大更新：支援多寵物切換、新增趨勢分析圖表、移除單日總覽卡片
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -39,26 +39,19 @@ def inject_custom_css():
         .block-container { padding-top: 1rem; padding-bottom: 5rem; }
         h4 { font-size: 20px !important; font-weight: 700 !important; color: var(--navy) !important; padding-bottom: 0.5rem; margin-bottom: 0rem; }
         div[data-testid="stVerticalBlock"] > div[style*="background-color"] { background: white; border-radius: 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.04); border: 1px solid rgba(1, 33, 114, 0.1); padding: 24px; }
-        .grid-row-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px; }
-        .grid-row-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 0px; }
-        @media (max-width: 640px) { .grid-row-3 { gap: 6px; } .stat-item { padding: 10px 4px !important; } .stat-value { font-size: 24px !important; } .stat-header { font-size: 12px !important; } div[data-testid="stVerticalBlock"] > div[style*="background-color"] { padding: 16px; } }
-        .stat-item { background: #fff; border: 2px solid #e2e8f0; border-radius: 12px; padding: 16px 12px; display: flex; flex-direction: column; align-items: center; text-align: center; }
-        .stat-header { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; font-size: 14px; font-weight: 700; color: var(--text-muted) !important; text-transform: uppercase; }
-        .stat-value { font-size: 32px; font-weight: 900; color: var(--navy) !important; line-height: 1.1; }
-        .stat-unit { font-size: 14px; font-weight: 600; color: var(--text-muted) !important; margin-left: 2px; }
+        
+        /* 趨勢圖樣式優化 */
+        div[data-testid="stChart"] { background: white; border-radius: 12px; padding: 10px; }
+        
+        .main-header { display: flex; align-items: center; gap: 12px; margin-top: 5px; margin-bottom: 24px; padding: 20px; background: white; border-radius: 16px; border: 1px solid rgba(1, 33, 114, 0.1); box-shadow: 0 4px 6px rgba(0,0,0,0.02); }
+        .header-icon { background: var(--navy); padding: 12px; border-radius: 12px; color: white !important; display: flex; }
+        
         .simple-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0; background: #FDFDF9; border: 1px solid var(--beige); border-radius: 12px; padding: 10px 0; margin-bottom: 15px; width: 100%; }
         .simple-item { text-align: center; padding: 0 2px; border-right: 1px solid rgba(1, 33, 114, 0.1); }
         .simple-item:last-child { border-right: none; }
         .simple-label { font-size: 11px; color: var(--text-muted) !important; font-weight: 700; }
         .simple-value { font-size: 16px; color: var(--navy) !important; font-weight: 800; }
         .simple-unit { font-size: 10px; color: var(--text-muted) !important; margin-left: 1px; }
-        .tag-container { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
-        .tag { display: inline-flex; align-items: center; padding: 6px 12px; border-radius: 8px; font-size: 14px; font-weight: 600; border: 1px solid transparent; color: var(--navy) !important; }
-        .tag-count { background: rgba(255,255,255,0.8); padding: 0px 6px; border-radius: 4px; font-size: 12px; font-weight: 800; margin-left: 6px; color: var(--navy) !important; }
-        .bg-orange { background: #fff7ed; color: #f97316; } .bg-blue { background: #eff6ff; color: #3b82f6; } .bg-cyan { background: #ecfeff; color: #06b6d4; } .bg-red { background: #fef2f2; color: #ef4444; } .bg-yellow { background: #fefce8; color: #eab308; }
-        .tag-green { background: #ecfdf5; border: 1px solid #d1fae5; color: #047857 !important; } .tag-red { background: #fff1f2; border: 1px solid #ffe4e6; color: #be123c !important; }
-        .main-header { display: flex; align-items: center; gap: 12px; margin-top: 5px; margin-bottom: 24px; padding: 20px; background: white; border-radius: 16px; border: 1px solid rgba(1, 33, 114, 0.1); box-shadow: 0 4px 6px rgba(0,0,0,0.02); }
-        .header-icon { background: var(--navy); padding: 12px; border-radius: 12px; color: white !important; display: flex; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -128,38 +121,49 @@ def process_image_to_base64(uploaded_file):
         st.error(f"圖片處理失敗: {e}")
         return None
 
-# [修正] 改用 update_acell，兼容 gspread 所有版本
-def save_user_settings(name, image_data, spreadsheet):
+# [V1.4] 修正：讀取 App_Config 支援多寵物列表
+# 格式預設：A欄=名字, B欄=圖片 (Row 1, 2, 3...)
+def get_pet_list(spreadsheet):
+    try:
+        sh_config = spreadsheet.worksheet("App_Config")
+        data = sh_config.get_all_values() # 讀取所有列
+        pets = []
+        for row in data:
+            if row and row[0].strip(): # 如果名字不為空
+                img = row[1] if len(row) > 1 else None
+                pets.append({"name": row[0], "image": img})
+        if not pets: return [{"name": "大文", "image": None}]
+        return pets
+    except:
+        return [{"name": "大文", "image": None}]
+
+# [V1.4] 修正：新增或更新寵物設定
+def save_pet_to_config(name, image_data, spreadsheet):
     try:
         try:
             sh_config = spreadsheet.worksheet("App_Config")
         except:
-            # 如果分頁不存在，自動建立
-            sh_config = spreadsheet.add_worksheet(title="App_Config", rows=10, cols=2)
+            sh_config = spreadsheet.add_worksheet(title="App_Config", rows=20, cols=2)
         
-        # [關鍵修正] 將 .update 改為 .update_acell
-        sh_config.update_acell('A1', name)
+        # 讀取現有名單，檢查是否已存在
+        cell_list = sh_config.col_values(1) # 讀取 A 欄所有名字
         
-        if image_data:
-            sh_config.update_acell('B1', image_data)
+        update_row = len(cell_list) + 1 # 預設寫在最後一行
+        if name in cell_list:
+            update_row = cell_list.index(name) + 1 # 找到存在的行數
             
-        st.toast("✅ 設定已儲存！")
-        return True # 回傳成功
+        sh_config.update_acell(f'A{update_row}', name)
+        if image_data:
+            sh_config.update_acell(f'B{update_row}', image_data)
+            
+        st.toast(f"✅ 寵物 {name} 資料已儲存！")
+        return True
     except Exception as e:
         st.error(f"設定儲存失敗: {e}")
         return False
 
-def load_user_settings(spreadsheet):
-    try:
-        sh_config = spreadsheet.worksheet("App_Config")
-        name = sh_config.acell('A1').value
-        image_data = sh_config.acell('B1').value
-        return name, image_data
-    except:
-        return None, None
-
 # --- HTML 渲染函式 ---
-def render_header(date_str, pet_name="大文", pet_image=None):
+def render_header(pet_name, pet_image=None):
     default_svg = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5c.67 0 1.35.09 2 .26 1.78-2 5.03-2.84 6.42-2.26 1.4.58-.42 7-.42 7 .57 1.07 1 2.24 1 3.44C21 17.9 16.97 21 12 21S3 17.9 3 13.44C3 12.24 3.43 11.07 4 10c0 0-1.82-6.42-.42-7 1.39-.58 4.64.26 6.42 2.26.65-.17 1.33-.26 2-.26z"/><path d="M9 13h.01"/><path d="M15 13h.01"/></svg>'
     
     if pet_image:
@@ -178,34 +182,10 @@ def render_header(date_str, pet_name="大文", pet_image=None):
         </div>
         <div>
             <div style="font-size:24px; font-weight:800; color:#012172;">{pet_name}的飲食日記</div>
-            <div style="font-size:15px; font-weight:500; color:#5A6B8C;">{date_str}</div>
+            <div style="font-size:15px; font-weight:500; color:#5A6B8C;">飲食紀錄與趨勢分析</div>
         </div>
     </div>
     '''
-    return html
-
-def render_daily_stats_html(day_stats):
-    icons = {
-        "flame": '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.1.2-2.2.6-3.3a1 1 0 0 0 2.1.7z"></path></svg>',
-        "utensils": '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>',
-        "droplets": '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 16.3c2.2 0 4-1.83 4-4.05 0-1.16-.57-2.26-1.71-3.19S7.29 6.75 7 5.3c-.29 1.45-1.14 2.84-2.29 3.76S3 11.1 3 12.25c0 2.22 1.8 4.05 4 4.05z"/><path d="M12.56 6.6A10.97 10.97 0 0 0 14 3.02c.5 2.5 2 4.9 4 6.5s3 3.5 3 5.5a6.98 6.98 0 0 1-11.91 4.97"/></svg>',
-        "beef": '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12.5" cy="8.5" r="2.5"/><path d="M12.5 2a6.5 6.5 0 0 0-6.22 4.6c-1.1 3.13-.78 6.43 1.48 9.17l2.92 2.92c.65.65 1.74.65 2.39 0l.97-.97a6 6 0 0 1 4.24-1.76h.04a6 6 0 0 0 3.79-1.35l.81-.81a2.5 2.5 0 0 0-3.54-3.54l-.47.47a1.5 1.5 0 0 1-2.12 0l-.88-.88a2.5 2.5 0 0 1 0-3.54l.84-.84c.76-.76.88-2 .2-2.86A6.5 6.5 0 0 0 12.5 2Z"/></svg>',
-        "dna": '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 15c6.638 0 12-5.362 12-12"/><path d="M10 21c6.638 0 12-5.362 12-12"/><path d="m2 3 20 18"/><path d="M12.818 8.182a4.92 4.92 0 0 0-1.636-1.636"/><path d="M16.364 11.728a9.862 9.862 0 0 0-3.092-3.092"/><path d="M9.272 15.364a9.862 9.862 0 0 0-3.092-3.092"/><path d="M12.818 18.91a4.92 4.92 0 0 0-1.636-1.636"/></svg>'
-    }
-    def get_stat_html(icon, label, value, unit, color_class):
-        return f'<div class="stat-item"><div><div class="stat-header"><div class="stat-icon {color_class}">{icons[icon]}</div>{label}</div><div style="display:flex; align-items:baseline; justify-content:center;"><span class="stat-value">{value}</span><span class="stat-unit">{unit}</span></div></div></div>'
-    html = '<div class="grid-row-3">' + get_stat_html("flame", "熱量", int(day_stats['cal']), "kcal", "bg-orange") + get_stat_html("utensils", "食物", f"{day_stats['food']:.1f}", "g", "bg-blue") + get_stat_html("droplets", "飲水", f"{day_stats['water']:.1f}", "ml", "bg-cyan") + '</div>'
-    html += '<div class="grid-row-2">' + get_stat_html("beef", "蛋白質", f"{day_stats['prot']:.1f}", "g", "bg-red") + get_stat_html("dna", "脂肪", f"{day_stats['fat']:.1f}", "g", "bg-yellow") + '</div>'
-    return html
-
-def render_supp_med_html(supp_list, med_list):
-    def get_tag_html(items, type_class):
-        if not items: return '<span style="color:#5A6B8C; font-size:13px;">無</span>'
-        return "".join([f'<span class="tag {type_class}">{item["name"]}<span class="tag-count">x{int(item["count"])}</span></span>' for item in items])
-    icons = {"pill": "💊", "leaf": "🌿"} 
-    html = '<div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px;">'
-    html += f'<div><div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;font-size:12px;font-weight:700;color:#047857;">保養品</div><div class="tag-container">{get_tag_html(supp_list, "tag-green")}</div></div>'
-    html += f'<div style="border-left:1px solid #f1f5f9;padding-left:20px;"><div><div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;font-size:12px;font-weight:700;color:#be123c;">藥品</div><div class="tag-container">{get_tag_html(med_list, "tag-red")}</div></div></div></div>'
     return html
 
 def render_meal_stats_simple(meal_stats):
@@ -215,10 +195,9 @@ def render_meal_stats_simple(meal_stats):
     return html + '</div>'
 
 # ==========================================
-#      連線與登入邏輯 (公開版核心)
+#      連線與登入邏輯
 # ==========================================
 
-# 1. 基礎連線設定
 def init_connection():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds_dict = st.secrets["gcp_service_account"]
@@ -226,11 +205,10 @@ def init_connection():
     client = gspread.authorize(creds)
     return client
 
-# 2. 讀取資料 (改為傳入 URL)
 def load_data_from_url(sheet_url):
     client = init_connection()
     try:
-        spreadsheet = client.open_by_url(sheet_url) # 使用 URL 開啟
+        spreadsheet = client.open_by_url(sheet_url)
         sheet_log = spreadsheet.worksheet("Log_Data")
         sheet_db = spreadsheet.worksheet("DB_Items")
         
@@ -240,55 +218,50 @@ def load_data_from_url(sheet_url):
     except Exception as e:
         return None, None, None, None, str(e), None
 
-# 3. 登入頁面
 if 'user_sheet_url' not in st.session_state: st.session_state.user_sheet_url = None
 if 'is_logged_in' not in st.session_state: st.session_state.is_logged_in = False
 
 def login_page():
     inject_custom_css()
     st.title("🐱 貓咪飲食紀錄 - 公開體驗版")
-    st.info("👋 歡迎！這是一個開放體驗的版本。請依照以下步驟連結您自己的 Google Sheet。")
+    st.info("👋 歡迎！請依照以下步驟連結您自己的 Google Sheet。")
 
     c1, c2 = st.columns(2)
     with c1:
         with st.container(border=True):
-            st.markdown("### 步驟 1：建立您的資料庫")
-            st.markdown(f"請點擊下方連結，建立一份 **範本副本** 到您的 Google Drive。")
+            st.markdown("### 步驟 1：建立資料庫")
+            st.markdown(f"請建立一份 **範本副本** 到您的 Google Drive，並在 Log_Data 新增 `Pet_Name` 欄位。")
             st.link_button("📄 取得 Google Sheet 範本", TEMPLATE_URL)
 
     with c2:
         with st.container(border=True):
             st.markdown("### 步驟 2：授權機器人")
-            st.markdown("請將您的 Sheet **共用 (Share)** 給下方機器人 Email，並設為 **「編輯者 (Editor)」**：")
+            st.markdown("請將您的 Sheet 共用給下方 Email (編輯者)：")
             st.code(SERVICE_ACCOUNT_EMAIL, language="text")
 
     st.divider()
+    url_input = st.text_input("🔗 請貼上您的 Google Sheet 網址：")
     
-    with st.container(border=True):
-        st.markdown("### 步驟 3：開始使用")
-        url_input = st.text_input("🔗 請貼上您的 Google Sheet 網址：", placeholder="https://docs.google.com/spreadsheets/d/...")
-        
-        if st.button("🚀 連線並開始", type="primary"):
-            if not url_input:
-                st.error("請輸入網址")
-            else:
-                with st.spinner("連線測試中..."):
-                    _items, _log, _sh_log, _sh_db, _msg, _spreadsheet = load_data_from_url(url_input)
-                    if _items is not None:
-                        st.session_state.user_sheet_url = url_input
-                        st.session_state.is_logged_in = True
-                        st.toast("✅ 連線成功！")
-                        time.sleep(1)
-                        st.rerun()
-                    else:
-                        st.error(f"連線失敗，請檢查權限。\n錯誤訊息：{_msg}")
+    if st.button("🚀 連線並開始", type="primary"):
+        if not url_input:
+            st.error("請輸入網址")
+        else:
+            with st.spinner("連線測試中..."):
+                _items, _log, _sh_log, _sh_db, _msg, _spreadsheet = load_data_from_url(url_input)
+                if _items is not None:
+                    st.session_state.user_sheet_url = url_input
+                    st.session_state.is_logged_in = True
+                    st.toast("✅ 連線成功！")
+                    time.sleep(1)
+                    st.rerun()
+                else:
+                    st.error(f"連線失敗：{_msg}")
 
-# === 程式進入點：登入檢查 ===
 if not st.session_state.is_logged_in:
     login_page()
-    st.stop() # 未登入前停止執行下方程式碼
+    st.stop()
 
-# --- 已登入：讀取使用者資料 ---
+# --- 已登入：讀取資料 ---
 df_items, df_log, sheet_log, sheet_db, sheet_title, spreadsheet = load_data_from_url(st.session_state.user_sheet_url)
 
 if df_items is None:
@@ -298,7 +271,7 @@ if df_items is None:
     st.stop()
 
 # ==========================================
-#      初始化 Mapping (資料轉換)
+#      Mapping 初始化
 # ==========================================
 if not df_items.empty:
     df_items.columns = [c.strip() for c in df_items.columns]
@@ -310,11 +283,11 @@ if not df_items.empty:
     cat_map = dict(zip(df_items['Item_Name'], df_items['Category']))
     unit_map = dict(zip(df_items['Item_Name'], df_items['Unit_Type']))
 else:
-    st.error("讀取不到 DB_Items，請檢查 Sheet 內容")
+    st.error("讀取不到 DB_Items")
     st.stop()
 
 # ==========================================
-#      邏輯函數區 (Callback) 
+#      邏輯函數區
 # ==========================================
 
 if 'need_scroll' not in st.session_state: st.session_state.need_scroll = False
@@ -338,6 +311,11 @@ def get_previous_meal_density(df_log_data):
     try:
         _df = df_log_data.copy()
         _df['Timestamp_dt'] = pd.to_datetime(_df['Timestamp'], errors='coerce')
+        # [V1.4] 修正：剩食計算也要過濾寵物
+        current_pet = st.session_state.get('selected_pet_name', '')
+        if 'Pet_Name' in _df.columns and current_pet:
+             _df = _df[_df['Pet_Name'] == current_pet]
+
         df_waste = _df[_df['ItemID'] == 'WASTE'].copy()
         if df_waste.empty: return None
         
@@ -375,7 +353,6 @@ def get_previous_meal_density(df_log_data):
         }
         return density
     except Exception as e:
-        print(f"Error calc density: {e}")
         return None
 
 def add_to_cart_callback(bowl_w, last_ref_w, last_ref_n):   
@@ -385,8 +362,7 @@ def add_to_cart_callback(bowl_w, last_ref_w, last_ref_n):
     scale_reading = safe_float(raw_scale)
     is_zeroed = st.session_state.get('check_zero', False)
     
-    if category == "請選擇..." or item_name == "請先選類別" or scale_reading <= 0:
-        return
+    if category == "請選擇..." or item_name == "請先選類別" or scale_reading <= 0: return
 
     unit = unit_map.get(item_name, "g")
     net_weight = 0.0
@@ -399,8 +375,7 @@ def add_to_cart_callback(bowl_w, last_ref_w, last_ref_n):
             net_weight = scale_reading
             db_scale_reading = last_ref_w + net_weight 
         else:
-            if scale_reading < last_ref_w:
-                return 
+            if scale_reading < last_ref_w: return 
             net_weight = scale_reading - last_ref_w
             db_scale_reading = scale_reading
 
@@ -423,15 +398,9 @@ def add_to_cart_callback(bowl_w, last_ref_w, last_ref_n):
             st.warning("⚠️ 找不到上一餐的剩餘紀錄，將使用預設數值")
 
     if unit in ["顆", "粒", "錠", "膠囊", "次"]:
-        cal = net_weight * cal_val
-        prot = net_weight * prot_val
-        fat = net_weight * fat_val
-        phos = net_weight * phos_val
+        cal = net_weight * cal_val; prot = net_weight * prot_val; fat = net_weight * fat_val; phos = net_weight * phos_val
     else:
-        cal = net_weight * cal_val / 100
-        prot = net_weight * prot_val / 100
-        fat = net_weight * fat_val / 100
-        phos = net_weight * phos_val / 100
+        cal = net_weight * cal_val / 100; prot = net_weight * prot_val / 100; fat = net_weight * fat_val / 100; phos = net_weight * phos_val / 100
 
     current_meal = st.session_state.meal_selector
 
@@ -454,18 +423,17 @@ def add_to_cart_callback(bowl_w, last_ref_w, last_ref_n):
     st.session_state.dash_stat_open = False
     st.session_state.dash_med_open = False
     st.session_state.meal_stats_open = False
-    
     st.session_state.meal_selector = current_meal
     st.session_state.just_added = True 
 
 def lock_meal_state():
-    if 'meal_selector' in st.session_state:
-        st.session_state.meal_selector = st.session_state.meal_selector
+    if 'meal_selector' in st.session_state: st.session_state.meal_selector = st.session_state.meal_selector
 
 def clear_finish_inputs_callback():
     st.session_state.waste_gross = None
     st.session_state.waste_tare = None
 
+# [V1.4] 修正：寫入時包含 Pet_Name
 def save_finish_callback(finish_type, waste_net, waste_cal, bowl_w, meal_n, finish_time_str, finish_date_obj, record_date_obj):
     if finish_type == "有剩餘 (需秤重)" and waste_net <= 0:
         st.session_state.finish_error = "剩餘重量計算錯誤，請檢查輸入數值。"
@@ -480,6 +448,9 @@ def save_finish_callback(finish_type, waste_net, waste_cal, bowl_w, meal_n, fini
     final_waste_cal = -waste_cal if finish_type == "有剩餘 (需秤重)" else 0
     item_id_code = "WASTE" if finish_type == "有剩餘 (需秤重)" else "FINISH"
     category_code = "剩食" if finish_type == "有剩餘 (需秤重)" else "完食"
+    
+    # 取得目前寵物
+    current_pet = st.session_state.get('selected_pet_name', '大文')
 
     row = [
         str(uuid.uuid4()), 
@@ -490,7 +461,8 @@ def save_finish_callback(finish_type, waste_net, waste_cal, bowl_w, meal_n, fini
         item_id_code, category_code, 0, bowl_w, 
         final_waste_net, final_waste_cal, 
         0, 0, 0, "",
-        "完食紀錄", finish_time_str
+        "完食紀錄", finish_time_str, 
+        current_pet # [V1.4] 新增欄位
     ]
     
     try:
@@ -501,16 +473,25 @@ def save_finish_callback(finish_type, waste_net, waste_cal, bowl_w, meal_n, fini
             meal_idx = header.index('Meal_Name')
             item_idx = header.index('ItemID')
             name_idx = header.index('Item_Name')
+            # [V1.4] 嘗試取得 Pet_Name 欄位，沒有則忽略
+            try: pet_idx = header.index('Pet_Name')
+            except: pet_idx = -1
         except ValueError:
-            date_idx = 2; meal_idx = 4; item_idx = 5; name_idx = 15
+            date_idx = 2; meal_idx = 4; item_idx = 5; name_idx = 15; pet_idx = -1
 
         rows_to_delete = []
         for i in range(len(current_data) - 1, 0, -1):
             r = current_data[i]
+            # [V1.4] 刪除檢查：如果 Sheet 有 Pet_Name 欄位，也要比對寵物名字
+            is_pet_match = True
+            if pet_idx != -1 and len(r) > pet_idx:
+                is_pet_match = (r[pet_idx] == current_pet)
+            
             if (r[date_idx] == str_date_for_db and 
                 r[meal_idx] == meal_n and 
                 r[item_idx] in ['WASTE', 'FINISH'] and
-                len(r) > name_idx and r[name_idx] == "完食紀錄"):
+                len(r) > name_idx and r[name_idx] == "完食紀錄" and
+                is_pet_match):
                 rows_to_delete.append(i + 1)
         
         for r_idx in rows_to_delete:
@@ -531,7 +512,6 @@ def save_finish_callback(finish_type, waste_net, waste_cal, bowl_w, meal_n, fini
 # ==========================================
 inject_custom_css()
 
-# 初始化狀態
 if 'dash_stat_open' not in st.session_state: st.session_state.dash_stat_open = False
 if 'dash_med_open' not in st.session_state: st.session_state.dash_med_open = False
 if 'meal_stats_open' not in st.session_state: st.session_state.meal_stats_open = False
@@ -541,7 +521,10 @@ if 'finish_radio' not in st.session_state: st.session_state.finish_radio = "全�
 if 'nav_mode' not in st.session_state: st.session_state.nav_mode = "➕ 新增食物/藥品"
 if 'finish_error' not in st.session_state: st.session_state.finish_error = None
 
-# 捲動 JS
+# [V1.4] 讀取寵物列表
+pet_list = get_pet_list(spreadsheet)
+pet_names = [p['name'] for p in pet_list]
+
 scroll_js = """
 <script>
     function smoothScroll() {
@@ -569,97 +552,165 @@ with st.sidebar:
     
     st.divider()
 
-    # 寵物資料設定
-    if 'pet_settings' not in st.session_state:
-        st.session_state.pet_settings = load_user_settings(spreadsheet)
+    # [V1.4] 寵物切換器
+    selected_pet = st.selectbox("🐾 選擇寵物", pet_names, key="selected_pet_name")
+    
+    # 找到對應的圖片
+    current_pet_image = next((p['image'] for p in pet_list if p['name'] == selected_pet), None)
 
-    current_pet_name, current_pet_image = st.session_state.pet_settings
-    if not current_pet_name: current_pet_name = "大文"
-
-    with st.expander("⚙️ 寵物資料設定"):
-        new_name = st.text_input("寵物名字", value=current_pet_name)
-        uploaded_photo = st.file_uploader("上傳大頭照", type=['jpg', 'png', 'jpeg'], help="將自動裁切為正方形")
+    # 寵物設定 (新增/修改)
+    with st.expander("⚙️ 寵物管理"):
+        new_name = st.text_input("新增/修改寵物名字", value=selected_pet)
+        uploaded_photo = st.file_uploader("上傳大頭照", type=['jpg', 'png', 'jpeg'])
         
-        if st.button("💾 儲存設定"):
+        if st.button("💾 儲存/新增寵物"):
             with st.spinner("處理中..."):
                 final_img_str = current_pet_image
                 if uploaded_photo:
                     final_img_str = process_image_to_base64(uploaded_photo)
                 
-                # 更新並檢查是否成功
-                success = save_user_settings(new_name, final_img_str, spreadsheet)
-                if success:
-                    st.session_state.pet_settings = (new_name, final_img_str)
+                if save_pet_to_config(new_name, final_img_str, spreadsheet):
                     st.rerun()
 
     st.divider()
 
-    # 日期與時間
-    st.header("📅 日期與時間") 
-    tw_now = get_tw_time()
-    record_date = st.date_input("日期", tw_now) 
+    # [V1.4] 趨勢圖 - 日期區間選擇
+    st.header("📅 趨勢與紀錄")
+    # 預設過去7天
+    default_end = get_tw_time().date()
+    default_start = default_end - timedelta(days=6)
+    
+    date_range = st.date_input(
+        "選擇趨勢區間",
+        value=(default_start, default_end),
+        max_value=default_end
+    )
+    
+    # 判斷日期範圍有效性
+    if isinstance(date_range, tuple) and len(date_range) == 2:
+        start_date, end_date = date_range
+    else:
+        start_date, end_date = default_start, default_end # Fallback
+
+    # 單日編輯用日期 (固定為 End Date 或另外選)
+    st.caption("👇 下方為「本日紀錄」的日期")
+    record_date = st.date_input("編輯日期", default_end)
     str_date_filter = record_date.strftime("%Y/%m/%d")
     
-    default_sidebar_time = tw_now.strftime("%H%M")
+    default_sidebar_time = get_tw_time().strftime("%H%M")
     raw_record_time = st.text_input("🕒 時間 (如 0618)", value=default_sidebar_time)
     record_time_str = format_time_str(raw_record_time)
-    st.caption(f"將記錄為：{record_time_str}")
     
     if st.button("🔄 重新整理數據", type="primary"):
         st.rerun()
 
 # ----------------------------------------------------
-# 3. 數據準備 (補回遺失的區塊)
+# [V1.4] 數據過濾 (針對選定的寵物)
 # ----------------------------------------------------
-df_today = pd.DataFrame()
-day_stats = {'cal':0, 'food':0, 'water':0, 'prot':0, 'fat':0}
-meal_stats = {'name': '尚未選擇', 'cal':0, 'food':0, 'water':0, 'prot':0, 'fat':0}
-supp_list = []
-med_list = []
-
-if not df_log.empty:
-    df_today = df_log[df_log['Date'] == str_date_filter].copy()
-    if not df_today.empty:
-        if 'Category' in df_today.columns:
-            df_today['Category'] = df_today['Category'].astype(str).str.strip()
-        
-        for col in ['Cal_Sub', 'Net_Quantity', 'Prot_Sub', 'Fat_Sub']:
-            df_today[col] = pd.to_numeric(df_today[col], errors='coerce').fillna(0)
-        
-        df_today = clean_duplicate_finish_records(df_today)
-        
-        day_food_net, day_water_net = calculate_intake_breakdown(df_today)
-        day_stats['cal'] = df_today['Cal_Sub'].sum()
-        day_stats['food'] = day_food_net
-        day_stats['water'] = day_water_net
-        day_stats['prot'] = df_today['Prot_Sub'].sum()
-        day_stats['fat'] = df_today['Fat_Sub'].sum()
-
-        if 'Category' in df_today.columns:
-            df_supp = df_today[df_today['Category'] == '保養品']
-            if not df_supp.empty:
-                counts = df_supp.groupby('Item_Name')['Net_Quantity'].sum()
-                supp_list = [{'name': k, 'count': v} for k, v in counts.items()]
-            
-            df_med = df_today[df_today['Category'] == '藥品']
-            if not df_med.empty:
-                counts = df_med.groupby('Item_Name')['Net_Quantity'].sum()
-                med_list = [{'name': k, 'count': v} for k, v in counts.items()]
+# 全域資料過濾：只保留選定寵物的資料
+# 如果 Log_Data 沒有 Pet_Name 欄位，則視為全部都是該寵物 (相容舊版)
+if 'Pet_Name' in df_log.columns:
+    df_pet_log = df_log[df_log['Pet_Name'] == selected_pet].copy()
+    # 如果是剛新增的寵物，可能還沒有資料，嘗試抓空白的 (相容舊資料)
+    if df_pet_log.empty and selected_pet == pet_names[0]: 
+         # 假設第一隻寵物擁有所有「未標記」的資料
+         df_pet_log = df_log[ (df_log['Pet_Name'] == selected_pet) | (df_log['Pet_Name'] == "") | (df_log['Pet_Name'].isna()) ].copy()
+else:
+    df_pet_log = df_log.copy() # 舊版 Sheet，全部視為當前寵物
 
 # ----------------------------------------------------
-# 4. 佈局實作
+# 4. 佈局實作 - [V1.4] 趨勢圖
 # ----------------------------------------------------
 date_display = record_date.strftime("%Y年 %m月 %d日")
-
-st.markdown(render_header(date_display, current_pet_name, current_pet_image), unsafe_allow_html=True)
+st.markdown(render_header(date_display, selected_pet, current_pet_image), unsafe_allow_html=True)
 
 col_dash, col_input = st.columns([4, 3], gap="medium")
 
-# --- 左欄：Dashboard ---
+# --- 左欄：趨勢與總覽 ---
 with col_dash:
+    # [V1.4] 新增趨勢分析區塊
     with st.container(border=True):
-        st.markdown("#### 📊 本日健康總覽")
-        with st.expander("📝 今日營養攝取", expanded=st.session_state.dash_stat_open):
+        st.markdown("#### 📈 健康趨勢分析")
+        
+        # 資料準備
+        if not df_pet_log.empty:
+            # 轉換日期格式
+            df_pet_log['Date_dt'] = pd.to_datetime(df_pet_log['Date'], format='%Y/%m/%d', errors='coerce').dt.date
+            
+            # 篩選區間
+            mask_range = (df_pet_log['Date_dt'] >= start_date) & (df_pet_log['Date_dt'] <= end_date)
+            df_trend = df_pet_log[mask_range].copy()
+            
+            if not df_trend.empty:
+                # 計算每日統計
+                # 先把數值轉 float
+                for c in ['Cal_Sub', 'Net_Quantity', 'Prot_Sub', 'Fat_Sub']:
+                    df_trend[c] = pd.to_numeric(df_trend[c], errors='coerce').fillna(0)
+                
+                df_trend = clean_duplicate_finish_records(df_trend)
+                
+                # 每日加總
+                daily_groups = df_trend.groupby('Date_dt')
+                
+                trend_data = []
+                for d, group in daily_groups:
+                    f_net, w_net = calculate_intake_breakdown(group)
+                    trend_data.append({
+                        'Date': d,
+                        '熱量 (kcal)': group['Cal_Sub'].sum(),
+                        '食物 (g)': f_net,
+                        '飲水 (ml)': w_net
+                    })
+                
+                df_chart = pd.DataFrame(trend_data).set_index('Date')
+                
+                # 顯示圖表 (Tabs)
+                tab1, tab2 = st.tabs(["🔥 熱量與食量", "💧 飲水量"])
+                with tab1:
+                    st.bar_chart(df_chart[['熱量 (kcal)', '食物 (g)']])
+                with tab2:
+                    st.line_chart(df_chart['飲水 (ml)'])
+            else:
+                st.info("此區間無資料")
+        else:
+            st.info("尚無紀錄")
+
+    # 本日詳細 (維持原本功能，但資料源改為 df_pet_log)
+    df_today = pd.DataFrame()
+    day_stats = {'cal':0, 'food':0, 'water':0, 'prot':0, 'fat':0}
+    
+    if not df_pet_log.empty:
+        df_today = df_pet_log[df_pet_log['Date'] == str_date_filter].copy()
+        if not df_today.empty:
+            if 'Category' in df_today.columns:
+                df_today['Category'] = df_today['Category'].astype(str).str.strip()
+            
+            for col in ['Cal_Sub', 'Net_Quantity', 'Prot_Sub', 'Fat_Sub']:
+                df_today[col] = pd.to_numeric(df_today[col], errors='coerce').fillna(0)
+            
+            df_today = clean_duplicate_finish_records(df_today)
+            
+            day_food_net, day_water_net = calculate_intake_breakdown(df_today)
+            day_stats['cal'] = df_today['Cal_Sub'].sum()
+            day_stats['food'] = day_food_net
+            day_stats['water'] = day_water_net
+            day_stats['prot'] = df_today['Prot_Sub'].sum()
+            day_stats['fat'] = df_today['Fat_Sub'].sum()
+
+            if 'Category' in df_today.columns:
+                df_supp = df_today[df_today['Category'] == '保養品']
+                if not df_supp.empty:
+                    counts = df_supp.groupby('Item_Name')['Net_Quantity'].sum()
+                    supp_list = [{'name': k, 'count': v} for k, v in counts.items()]
+                
+                df_med = df_today[df_today['Category'] == '藥品']
+                if not df_med.empty:
+                    counts = df_med.groupby('Item_Name')['Net_Quantity'].sum()
+                    med_list = [{'name': k, 'count': v} for k, v in counts.items()]
+
+    with st.container(border=True):
+        st.markdown(f"#### 📅 {date_display} 攝取明細")
+        with st.expander("📝 今日營養攝取", expanded=True): # 預設展開
              st.markdown(render_daily_stats_html(day_stats), unsafe_allow_html=True)
         with st.expander("💊 今日保養與藥品服用", expanded=st.session_state.dash_med_open):
              st.markdown(render_supp_med_html(supp_list, med_list), unsafe_allow_html=True)
@@ -696,7 +747,7 @@ with col_input:
         st.session_state.meal_selector = default_meal_name
 
     with st.container(border=True):
-        st.markdown("#### 🍽️ 本日飲食紀錄")
+        st.markdown(f"#### 🍽️ 編輯紀錄 ({selected_pet})") # 標題加上寵物名
         
         c_meal, c_bowl = st.columns(2)
         with c_meal:
@@ -911,6 +962,9 @@ with col_input:
                             str_date = record_date.strftime("%Y/%m/%d")
                             str_time = f"{record_time_str}:00"
                             timestamp = f"{str_date} {str_time}"
+                            
+                            # [V1.4] 取得目前寵物
+                            current_pet = st.session_state.get('selected_pet_name', '大文')
 
                             for i, row_data in edited_df.iterrows():
                                 orig_item = next((x for x in st.session_state.cart if x['Item_Name'] == row_data['Item_Name']), {})
@@ -923,7 +977,8 @@ with col_input:
                                     orig_item.get('Scale_Reading', 0), orig_item.get('Bowl_Weight', 0), 
                                     safe_net, safe_cal,
                                     orig_item.get('Prot_Sub', 0), orig_item.get('Fat_Sub', 0), 
-                                    orig_item.get('Phos_Sub', 0), "", row_data['Item_Name'], ""
+                                    orig_item.get('Phos_Sub', 0), "", row_data['Item_Name'], "",
+                                    current_pet # [V1.4] 寫入寵物名
                                 ]
                                 rows.append(row)
                             try:
@@ -933,7 +988,7 @@ with col_input:
                                 st.session_state.dash_stat_open = False
                                 st.session_state.dash_med_open = False
                                 st.session_state.meal_stats_open = False
-                                load_data.clear()
+                                load_data.clear() # 清除快取以重新讀取
                                 st.session_state.just_saved = True 
                                 st.rerun()
                             except Exception as e:
