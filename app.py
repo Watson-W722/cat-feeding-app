@@ -1,5 +1,5 @@
-# Python 程式碼 (公開體驗版 Public Beta) - V1.5
-# 修正重點：補回所有遺失的 HTML 渲染函式，修復 Icon 跑版問題，確保程式邏輯完整
+# Python 程式碼 (公開體驗版 Public Beta) - V1.6
+# 修正重點：修復 HTML 字串縮排導致的顯示錯誤，確保所有函式在執行前已定義
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -40,10 +40,8 @@ def inject_custom_css():
         h4 { font-size: 20px !important; font-weight: 700 !important; color: var(--navy) !important; padding-bottom: 0.5rem; margin-bottom: 0rem; }
         div[data-testid="stVerticalBlock"] > div[style*="background-color"] { background: white; border-radius: 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.04); border: 1px solid rgba(1, 33, 114, 0.1); padding: 24px; }
         
-        /* 數據網格優化 */
         .grid-row-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px; }
         .grid-row-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 0px; }
-        
         @media (max-width: 640px) { 
             .grid-row-3 { gap: 6px; } 
             .stat-item { padding: 10px 4px !important; } 
@@ -52,32 +50,11 @@ def inject_custom_css():
             div[data-testid="stVerticalBlock"] > div[style*="background-color"] { padding: 16px; } 
         }
 
-        /* 數據單項卡片樣式修正 */
         .stat-item { 
-            background: #fff; 
-            border: 2px solid #e2e8f0; 
-            border-radius: 12px; 
-            padding: 16px 12px; 
-            display: flex; 
-            flex-direction: column; 
-            align-items: center; 
-            justify-content: center;
-            text-align: center;
-            height: 100%;
+            background: #fff; border: 2px solid #e2e8f0; border-radius: 12px; padding: 16px 12px; 
+            display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; height: 100%;
         }
-        
-        .stat-header { 
-            display: flex; 
-            align-items: center; 
-            justify-content: center;
-            gap: 6px; 
-            margin-bottom: 8px; 
-            font-size: 14px; 
-            font-weight: 700; 
-            color: var(--text-muted) !important; 
-            text-transform: uppercase; 
-        }
-        
+        .stat-header { display: flex; align-items: center; justify-content: center; gap: 6px; margin-bottom: 8px; font-size: 14px; font-weight: 700; color: var(--text-muted) !important; text-transform: uppercase; }
         .stat-value { font-size: 32px; font-weight: 900; color: var(--navy) !important; line-height: 1.1; }
         .stat-unit { font-size: 14px; font-weight: 600; color: var(--text-muted) !important; margin-left: 2px; }
         
@@ -106,7 +83,7 @@ def inject_custom_css():
     """, unsafe_allow_html=True)
 
 # ==========================================
-#      工具函式
+#      工具函式 (全部移到最上方)
 # ==========================================
 
 def safe_float(value):
@@ -208,7 +185,7 @@ def save_pet_to_config(name, image_data, spreadsheet):
         return False
 
 # ==========================================
-#      HTML 渲染函式 (所有 View 相關)
+#      HTML 渲染函式 (所有 View 相關 - 修正版)
 # ==========================================
 
 def render_header(pet_name, pet_image=None):
@@ -237,31 +214,18 @@ def render_header(pet_name, pet_image=None):
     return html
 
 def render_daily_stats_html(day_stats):
-    # [修正] 簡化 SVG 路徑，確保不會因為字串過長或格式問題導致跑版
+    # [修正] 移除所有多餘縮排，改用單行拼接，防止 HTML 跑版
     icons = {
         "flame": '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.1.2-2.2.6-3.3a1 1 0 0 0 2.1.7z"></path></svg>',
         "utensils": '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>',
         "droplets": '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 16.3c2.2 0 4-1.83 4-4.05 0-1.16-.57-2.26-1.71-3.19S7.29 6.75 7 5.3c-.29 1.45-1.14 2.84-2.29 3.76S3 11.1 3 12.25c0 2.22 1.8 4.05 4 4.05z"/><path d="M12.56 6.6A10.97 10.97 0 0 0 14 3.02c.5 2.5 2 4.9 4 6.5s3 3.5 3 5.5a6.98 6.98 0 0 1-11.91 4.97"/></svg>',
-        "beef": '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z"/><path d="M12 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z"/></svg>',
+        "beef": '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12.5" cy="8.5" r="2.5"/><path d="M12.5 2a6.5 6.5 0 0 0-6.22 4.6c-1.1 3.13-.78 6.43 1.48 9.17l2.92 2.92c.65.65 1.74.65 2.39 0l.97-.97a6 6 0 0 1 4.24-1.76h.04a6 6 0 0 0 3.79-1.35l.81-.81a2.5 2.5 0 0 0-3.54-3.54l-.47.47a1.5 1.5 0 0 1-2.12 0l-.88-.88a2.5 2.5 0 0 1 0-3.54l.84-.84c.76-.76.88-2 .2-2.86A6.5 6.5 0 0 0 12.5 2Z"/></svg>',
         "dna": '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>'
     }
     
     def get_stat_html(icon, label, value, unit, color_class):
-        # [修正] 調整 display 屬性，確保 icon 和 label 不會擠在一起
-        return f'''
-        <div class="stat-item">
-            <div style="margin-bottom:4px;">
-                <div class="stat-header">
-                    <div class="stat-icon {color_class}">{icons[icon]}</div>
-                    {label}
-                </div>
-            </div>
-            <div style="display:flex; align-items:baseline; justify-content:center;">
-                <span class="stat-value">{value}</span>
-                <span class="stat-unit">{unit}</span>
-            </div>
-        </div>
-        '''
+        # 使用單行字串拼接，確保最安全的渲染結果
+        return f'<div class="stat-item"><div style="margin-bottom:4px;"><div class="stat-header"><div class="stat-icon {color_class}">{icons[icon]}</div>{label}</div></div><div style="display:flex; align-items:baseline; justify-content:center;"><span class="stat-value">{value}</span><span class="stat-unit">{unit}</span></div></div>'
         
     html = '<div class="grid-row-3">'
     html += get_stat_html("flame", "熱量", int(day_stats['cal']), "kcal", "bg-orange")
@@ -275,7 +239,7 @@ def render_daily_stats_html(day_stats):
     html += '</div>'
     return html
 
-# [修正] 補回此函式，解決 NameError
+# [修正] 補回 render_supp_med_html，解決 NameError
 def render_supp_med_html(supp_list, med_list):
     def get_tag_html(items, type_class):
         if not items: return '<span style="color:#5A6B8C; font-size:13px;">無</span>'
@@ -765,6 +729,8 @@ with col_dash:
     # 本日詳細
     df_today = pd.DataFrame()
     day_stats = {'cal':0, 'food':0, 'water':0, 'prot':0, 'fat':0}
+    supp_list = [] # [修正] 初始化變數，確保不報錯
+    med_list = []
     
     if not df_pet_log.empty:
         df_today = df_pet_log[df_pet_log['Date'] == str_date_filter].copy()
@@ -1050,7 +1016,6 @@ with col_input:
                             str_time = f"{record_time_str}:00"
                             timestamp = f"{str_date} {str_time}"
                             
-                            # [V1.4] 取得目前寵物
                             current_pet = st.session_state.get('selected_pet_name', '大文')
 
                             for i, row_data in edited_df.iterrows():
@@ -1065,7 +1030,7 @@ with col_input:
                                     safe_net, safe_cal,
                                     orig_item.get('Prot_Sub', 0), orig_item.get('Fat_Sub', 0), 
                                     orig_item.get('Phos_Sub', 0), "", row_data['Item_Name'], "",
-                                    current_pet # [V1.4] 寫入寵物名
+                                    current_pet
                                 ]
                                 rows.append(row)
                             try:
@@ -1075,7 +1040,7 @@ with col_input:
                                 st.session_state.dash_stat_open = False
                                 st.session_state.dash_med_open = False
                                 st.session_state.meal_stats_open = False
-                                load_data.clear() # 清除快取以重新讀取
+                                load_data.clear()
                                 st.session_state.just_saved = True 
                                 st.rerun()
                             except Exception as e:
