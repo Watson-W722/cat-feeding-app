@@ -1,5 +1,5 @@
-# Python 程式碼 (公開體驗版 Public Beta) - V2.3
-# 修正重點：加入 tenacity 重試機制，解決 Google API 429 Quota Exceeded 錯誤
+# Python 程式碼 (公開體驗版 Public Beta) - V2.3.1
+# 修正重點：修復 NameError (補上 wait_fixed 引用)，解決 API Quota Exceeded 問題
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -12,8 +12,8 @@ import time
 from PIL import Image, ImageOps 
 import io
 import base64
-# [V2.3] 新增 retry 套件
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+# [V2.3.1] 修正：補上 wait_fixed
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, wait_fixed
 
 # --- 1. 設定頁面 ---
 st.set_page_config(page_title="貓咪飲食紀錄 (體驗版)", page_icon="🐱", layout="wide")
@@ -40,26 +40,47 @@ def inject_custom_css():
         .block-container { padding-top: 1rem; padding-bottom: 5rem; }
         h4 { font-size: 20px !important; font-weight: 700 !important; color: var(--navy) !important; padding-bottom: 0.5rem; margin-bottom: 0rem; }
         div[data-testid="stVerticalBlock"] > div[style*="background-color"] { background: white; border-radius: 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.04); border: 1px solid rgba(1, 33, 114, 0.1); padding: 24px; }
+        
         .grid-row-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px; }
         .grid-row-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 0px; }
-        @media (max-width: 640px) { .grid-row-3 { gap: 6px; } .stat-item { padding: 10px 4px !important; } .stat-value { font-size: 24px !important; } .stat-header { font-size: 12px !important; } div[data-testid="stVerticalBlock"] > div[style*="background-color"] { padding: 16px; } }
-        .stat-item { background: #fff; border: 2px solid #e2e8f0; border-radius: 12px; padding: 16px 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; height: 100%; }
+        @media (max-width: 640px) { 
+            .grid-row-3 { gap: 6px; } 
+            .stat-item { padding: 10px 4px !important; } 
+            .stat-value { font-size: 24px !important; } 
+            .stat-header { font-size: 12px !important; } 
+            div[data-testid="stVerticalBlock"] > div[style*="background-color"] { padding: 16px; } 
+        }
+
+        .stat-item { 
+            background: #fff; border: 2px solid #e2e8f0; border-radius: 12px; padding: 16px 12px; 
+            display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; height: 100%;
+        }
         .stat-header { display: flex; align-items: center; justify-content: center; gap: 6px; margin-bottom: 8px; font-size: 14px; font-weight: 700; color: var(--text-muted) !important; text-transform: uppercase; }
         .stat-value { font-size: 32px; font-weight: 900; color: var(--navy) !important; line-height: 1.1; }
         .stat-unit { font-size: 14px; font-weight: 600; color: var(--text-muted) !important; margin-left: 2px; }
+        
         .simple-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0; background: #FDFDF9; border: 1px solid var(--beige); border-radius: 12px; padding: 10px 0; margin-bottom: 15px; width: 100%; }
         .simple-item { text-align: center; padding: 0 2px; border-right: 1px solid rgba(1, 33, 114, 0.1); }
         .simple-item:last-child { border-right: none; }
         .simple-label { font-size: 11px; color: var(--text-muted) !important; font-weight: 700; }
         .simple-value { font-size: 16px; color: var(--navy) !important; font-weight: 800; }
         .simple-unit { font-size: 10px; color: var(--text-muted) !important; margin-left: 1px; }
+        
         .tag-container { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
         .tag { display: inline-flex; align-items: center; padding: 6px 12px; border-radius: 8px; font-size: 14px; font-weight: 600; border: 1px solid transparent; color: var(--navy) !important; }
         .tag-count { background: rgba(255,255,255,0.8); padding: 0px 6px; border-radius: 4px; font-size: 12px; font-weight: 800; margin-left: 6px; color: var(--navy) !important; }
-        .bg-orange { background: #fff7ed; color: #f97316; } .bg-blue { background: #eff6ff; color: #3b82f6; } .bg-cyan { background: #ecfeff; color: #06b6d4; } .bg-red { background: #fef2f2; color: #ef4444; } .bg-yellow { background: #fefce8; color: #eab308; }
-        .tag-green { background: #ecfdf5; border: 1px solid #d1fae5; color: #047857 !important; } .tag-red { background: #fff1f2; border: 1px solid #ffe4e6; color: #be123c !important; }
+        
+        .bg-orange { background: #fff7ed; color: #f97316; } 
+        .bg-blue { background: #eff6ff; color: #3b82f6; } 
+        .bg-cyan { background: #ecfeff; color: #06b6d4; } 
+        .bg-red { background: #fef2f2; color: #ef4444; } 
+        .bg-yellow { background: #fefce8; color: #eab308; }
+        .tag-green { background: #ecfdf5; border: 1px solid #d1fae5; color: #047857 !important; } 
+        .tag-red { background: #fff1f2; border: 1px solid #ffe4e6; color: #be123c !important; }
+        
         .main-header { display: flex; align-items: center; gap: 12px; margin-top: 5px; margin-bottom: 24px; padding: 20px; background: white; border-radius: 16px; border: 1px solid rgba(1, 33, 114, 0.1); box-shadow: 0 4px 6px rgba(0,0,0,0.02); }
         .header-icon { background: var(--navy); padding: 12px; border-radius: 12px; color: white !important; display: flex; }
+        
         div[data-testid="stDateInput"] label { font-weight: bold; color: var(--navy); }
     </style>
     """, unsafe_allow_html=True)
@@ -144,7 +165,7 @@ def get_pet_list(spreadsheet):
     except:
         return [{"name": "大文", "image": None}]
 
-# [V2.3] 寫入時也加入 Retry 機制，避免寫入失敗
+# [V2.3] 寫入時也加入 Retry 機制
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
 def save_pet_to_config(name, image_data, spreadsheet):
     try:
@@ -166,7 +187,6 @@ def save_pet_to_config(name, image_data, spreadsheet):
         st.cache_data.clear()
         return True
     except Exception as e:
-        # 拋出異常以觸發 Retry
         raise e
 
 # ==========================================
@@ -245,6 +265,7 @@ def render_meal_stats_simple(meal_stats):
 #      連線與登入邏輯
 # ==========================================
 
+# 1. 基礎連線設定 (快取資源)
 @st.cache_resource
 def init_connection():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -254,16 +275,14 @@ def init_connection():
     return client
 
 # [V2.3] 靜態資料讀取 (加入 Retry 機制)
-# 如果 API 配額滿了，會自動等待並重試，最多 5 次，每次間隔會越來越長 (Exponential Backoff)
 @st.cache_data(ttl=60)
 @retry(
     stop=stop_after_attempt(5), 
     wait=wait_exponential(multiplier=1, min=2, max=10),
-    retry=retry_if_exception_type(Exception) # 只要報錯就重試 (通常是 APIError)
+    retry=retry_if_exception_type(Exception)
 )
 def _load_data_static(sheet_url):
     client = init_connection()
-    # 這裡不 try-except，讓錯誤拋出給 @retry 處理
     spreadsheet = client.open_by_url(sheet_url)
     sheet_log = spreadsheet.worksheet("Log_Data")
     sheet_db = spreadsheet.worksheet("DB_Items")
@@ -282,12 +301,10 @@ def load_data_from_url(sheet_url):
         sheet_log = spreadsheet.worksheet("Log_Data")
         sheet_db = spreadsheet.worksheet("DB_Items")
         
-        # 呼叫有 Retry 保護的靜態讀取函式
         try:
             db_data, log_data, title = _load_data_static(sheet_url)
             return pd.DataFrame(db_data), pd.DataFrame(log_data), sheet_log, sheet_db, title, spreadsheet
         except Exception as e:
-            # 如果重試 5 次還是失敗，才會跑到這裡
             return None, None, None, None, f"連線忙碌中，請稍後再試。\n錯誤: {str(e)}", None
 
     except Exception as e:
@@ -508,8 +525,7 @@ def clear_finish_inputs_callback():
     st.session_state.waste_gross = None
     st.session_state.waste_tare = None
 
-# 寫入時包含 Pet_Name
-# [V2.3] 同樣加入 Retry 機制，避免寫入時網路不穩
+# [V2.3.1] 寫入時包含 Pet_Name 並加入 Retry 機制
 @retry(stop=stop_after_attempt(3), wait=wait_fixed(2))
 def _save_finish_to_sheet(sheet_log, rows_to_delete, row_to_append):
     for r_idx in rows_to_delete:
@@ -601,7 +617,7 @@ if 'finish_radio' not in st.session_state: st.session_state.finish_radio = "全�
 if 'nav_mode' not in st.session_state: st.session_state.nav_mode = "➕ 新增食物/藥品"
 if 'finish_error' not in st.session_state: st.session_state.finish_error = None
 
-# [V1.4] 讀取寵物列表
+# 讀取寵物列表
 pet_list = get_pet_list(spreadsheet)
 pet_names = [p['name'] for p in pet_list]
 
@@ -626,7 +642,7 @@ if st.session_state.just_saved or st.session_state.just_added or st.session_stat
 with st.sidebar:
     st.caption(f"📚 目前連線：{sheet_title}")
     
-    # [V2.2] 顯示資料更新時間
+    # 顯示資料更新時間
     st.caption(f"⏱️ 資料更新：{get_tw_time().strftime('%H:%M:%S')}")
     
     if st.button("登出 / 換資料庫", type="secondary"):
@@ -670,7 +686,7 @@ with st.sidebar:
     st.caption(f"將記錄為：{record_time_str}")
     
     if st.button("🔄 重新整理數據", type="primary"):
-        st.cache_data.clear() # [V2.2] 手動重整也清除快取
+        st.cache_data.clear() # 手動重整也清除快取
         st.rerun()
 
 # ----------------------------------------------------
@@ -740,7 +756,6 @@ with col_dash:
         with st.expander("💊 今日保養與藥品服用", expanded=st.session_state.dash_med_open):
              st.markdown(render_supp_med_html(supp_list, med_list), unsafe_allow_html=True)
 
-        st.divider()
         
         # 2. 趨勢分析
         with st.expander("📈 趨勢分析", expanded=True):
@@ -1032,7 +1047,6 @@ with col_input:
                     except:
                         st.error("刪除失敗，請重新整理頁面")
 
-                # [V2.3] 儲存按鈕加上 Retry 與快取清除
                 if st.button("💾 儲存寫入 Google Sheet", type="primary", use_container_width=True, on_click=lock_meal_state):
                     if edited_df.empty:
                         st.warning("清單為空或資料不完整")
@@ -1043,7 +1057,7 @@ with col_input:
                             str_time = f"{record_time_str}:00"
                             timestamp = f"{str_date} {str_time}"
                             
-                            # [V2.1] 取得目前寵物
+                            # [V2.1] 取得目前寵物，確保寫入時有名字
                             current_pet = st.session_state.get('selected_pet_name', '大文')
 
                             for i, row_data in edited_df.iterrows():
