@@ -1,5 +1,5 @@
-# Python 程式碼 (公開體驗版 Public Beta) - V1.9
-# 修正重點：移除健康總覽卡片內的分隔線
+# Python 程式碼 (公開體驗版 Public Beta) - V2.0
+# 修正重點：加入 st.cache_data 與 st.cache_resource 快取機制，解決 API 429 Quota Exceeded 問題
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -24,7 +24,6 @@ try:
 except:
     SERVICE_ACCOUNT_EMAIL = "請先設定 Secrets"
 
-# 請確認這裡已換成您的範本連結
 TEMPLATE_URL = "https://docs.google.com/spreadsheets/d/1Ou_tXbZGXenP1n5Y_dhj-IzywWEPaWqghVJ8eOx5AQU/edit?usp=sharing"
 
 # --- CSS 注入 ---
@@ -181,6 +180,8 @@ def save_pet_to_config(name, image_data, spreadsheet):
             sh_config.update_acell(f'B{update_row}', image_data)
             
         st.toast(f"✅ 寵物 {name} 資料已儲存！")
+        # 清除快取，確保下次讀取是新的
+        st.cache_data.clear()
         return True
     except Exception as e:
         st.error(f"設定儲存失敗: {e}")
@@ -209,7 +210,7 @@ def render_header(date_str, pet_name, pet_image=None):
         </div>
         <div>
             <div style="font-size:24px; font-weight:800; color:#012172;">{pet_name}的飲食日記</div>
-            <div style="font-size:15px; font-weight:500; color:#5A6B8C;">飲食紀錄與趨勢分析</div>
+            <div style="font-size:15px; font-weight:500; color:#5A6B8C;">{date_str}</div>
         </div>
     </div>
     '''
@@ -262,6 +263,8 @@ def render_meal_stats_simple(meal_stats):
 #      連線與登入邏輯
 # ==========================================
 
+# 1. 基礎連線設定 (快取資源)
+@st.cache_resource
 def init_connection():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds_dict = st.secrets["gcp_service_account"]
@@ -269,16 +272,42 @@ def init_connection():
     client = gspread.authorize(creds)
     return client
 
-def load_data_from_url(sheet_url):
+# 2. 靜態資料讀取 (快取資料，TTL 5分鐘)
+# 這個函式只負責抓資料，不負責連線物件
+@st.cache_data(ttl=300)
+def _load_data_static(sheet_url):
     client = init_connection()
     try:
         spreadsheet = client.open_by_url(sheet_url)
         sheet_log = spreadsheet.worksheet("Log_Data")
         sheet_db = spreadsheet.worksheet("DB_Items")
         
+        # 只讀取值，這是最耗流量的操作
         db_data = sheet_db.get_all_records()
         log_data = sheet_log.get_all_records()
-        return pd.DataFrame(db_data), pd.DataFrame(log_data), sheet_log, sheet_db, spreadsheet.title, spreadsheet
+        title = spreadsheet.title
+        
+        return db_data, log_data, title, True, ""
+    except Exception as e:
+        return None, None, None, False, str(e)
+
+# 3. 整合載入函式 (主程式呼叫這個)
+def load_data_from_url(sheet_url):
+    # 1. 取得連線 (Fast, Cached Resource)
+    client = init_connection()
+    try:
+        spreadsheet = client.open_by_url(sheet_url)
+        # 取得工作表物件 (這是輕量操作，用於寫入)
+        sheet_log = spreadsheet.worksheet("Log_Data")
+        sheet_db = spreadsheet.worksheet("DB_Items")
+        
+        # 2. 取得資料內容 (Cached Data, TTL 300s)
+        db_data, log_data, title, success, msg = _load_data_static(sheet_url)
+        
+        if not success:
+            return None, None, None, None, msg, None
+            
+        return pd.DataFrame(db_data), pd.DataFrame(log_data), sheet_log, sheet_db, title, spreadsheet
     except Exception as e:
         return None, None, None, None, str(e), None
 
@@ -564,6 +593,9 @@ def save_finish_callback(finish_type, waste_net, waste_cal, bowl_w, meal_n, fini
         st.session_state.meal_selector = meal_n
         clear_finish_inputs_callback()
         st.session_state.just_saved = True
+        
+        # [V2.0] 重要：寫入後清除快取，確保資料即時性
+        st.cache_data.clear()
         st.rerun() 
     except Exception as e:
         st.session_state.finish_error = f"寫入失敗：{e}"
@@ -582,7 +614,7 @@ if 'finish_radio' not in st.session_state: st.session_state.finish_radio = "全�
 if 'nav_mode' not in st.session_state: st.session_state.nav_mode = "➕ 新增食物/藥品"
 if 'finish_error' not in st.session_state: st.session_state.finish_error = None
 
-# [V1.4] 讀取寵物列表
+# 讀取寵物列表 (這裡用 spreadsheet 物件，不快取，因為設定檔很小)
 pet_list = get_pet_list(spreadsheet)
 pet_names = [p['name'] for p in pet_list]
 
@@ -647,6 +679,7 @@ with st.sidebar:
     st.caption(f"將記錄為：{record_time_str}")
     
     if st.button("🔄 重新整理數據", type="primary"):
+        st.cache_data.clear() # [V2.0] 手動重整也清除快取
         st.rerun()
 
 # ----------------------------------------------------
@@ -1039,7 +1072,8 @@ with col_input:
                                 st.session_state.dash_stat_open = False
                                 st.session_state.dash_med_open = False
                                 st.session_state.meal_stats_open = False
-                                # [修正] 用 rerun 代替 load_data.clear()
+                                # [V2.0] 寫入後清除快取
+                                st.cache_data.clear()
                                 st.session_state.just_saved = True 
                                 st.rerun()
                             except Exception as e:
