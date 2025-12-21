@@ -1,5 +1,5 @@
-# Python 程式碼 (公開體驗版 Public Beta) - V1.8
-# 修正重點：將趨勢分析區塊放入 st.expander 以支援收合功能
+# Python 程式碼 (公開體驗版 Public Beta) - V1.9
+# 修正重點：移除健康總覽卡片內的分隔線
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -80,7 +80,6 @@ def inject_custom_css():
         .main-header { display: flex; align-items: center; gap: 12px; margin-top: 5px; margin-bottom: 24px; padding: 20px; background: white; border-radius: 16px; border: 1px solid rgba(1, 33, 114, 0.1); box-shadow: 0 4px 6px rgba(0,0,0,0.02); }
         .header-icon { background: var(--navy); padding: 12px; border-radius: 12px; color: white !important; display: flex; }
         
-        /* 調整 Date Input 在卡片內的樣式 */
         div[data-testid="stDateInput"] label { font-weight: bold; color: var(--navy); }
     </style>
     """, unsafe_allow_html=True)
@@ -210,7 +209,7 @@ def render_header(date_str, pet_name, pet_image=None):
         </div>
         <div>
             <div style="font-size:24px; font-weight:800; color:#012172;">{pet_name}的飲食日記</div>
-            <div style="font-size:15px; font-weight:500; color:#5A6B8C;">{date_str}</div>
+            <div style="font-size:15px; font-weight:500; color:#5A6B8C;">飲食紀錄與趨勢分析</div>
         </div>
     </div>
     '''
@@ -715,7 +714,6 @@ with col_dash:
         with st.expander("💊 今日保養與藥品服用", expanded=st.session_state.dash_med_open):
              st.markdown(render_supp_med_html(supp_list, med_list), unsafe_allow_html=True)
 
-        st.divider()
         
         # 2. 趨勢分析
         with st.expander("📈 趨勢分析", expanded=True):
