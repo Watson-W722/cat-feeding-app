@@ -1,5 +1,5 @@
-# Python 程式碼 (公開體驗版 Public Beta) - V2.0
-# 修正重點：加入 st.cache_data 與 st.cache_resource 快取機制，解決 API 429 Quota Exceeded 問題
+# Python 程式碼 (公開體驗版 Public Beta) - V2.1
+# 修正重點：修復多寵物切換時資料未過濾的問題 (強制篩選邏輯)、增加欄位檢查提示
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -180,8 +180,7 @@ def save_pet_to_config(name, image_data, spreadsheet):
             sh_config.update_acell(f'B{update_row}', image_data)
             
         st.toast(f"✅ 寵物 {name} 資料已儲存！")
-        # 清除快取，確保下次讀取是新的
-        st.cache_data.clear()
+        st.cache_data.clear() # 清除快取
         return True
     except Exception as e:
         st.error(f"設定儲存失敗: {e}")
@@ -263,7 +262,6 @@ def render_meal_stats_simple(meal_stats):
 #      連線與登入邏輯
 # ==========================================
 
-# 1. 基礎連線設定 (快取資源)
 @st.cache_resource
 def init_connection():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -272,8 +270,6 @@ def init_connection():
     client = gspread.authorize(creds)
     return client
 
-# 2. 靜態資料讀取 (快取資料，TTL 5分鐘)
-# 這個函式只負責抓資料，不負責連線物件
 @st.cache_data(ttl=300)
 def _load_data_static(sheet_url):
     client = init_connection()
@@ -282,7 +278,6 @@ def _load_data_static(sheet_url):
         sheet_log = spreadsheet.worksheet("Log_Data")
         sheet_db = spreadsheet.worksheet("DB_Items")
         
-        # 只讀取值，這是最耗流量的操作
         db_data = sheet_db.get_all_records()
         log_data = sheet_log.get_all_records()
         title = spreadsheet.title
@@ -291,17 +286,13 @@ def _load_data_static(sheet_url):
     except Exception as e:
         return None, None, None, False, str(e)
 
-# 3. 整合載入函式 (主程式呼叫這個)
 def load_data_from_url(sheet_url):
-    # 1. 取得連線 (Fast, Cached Resource)
     client = init_connection()
     try:
         spreadsheet = client.open_by_url(sheet_url)
-        # 取得工作表物件 (這是輕量操作，用於寫入)
         sheet_log = spreadsheet.worksheet("Log_Data")
         sheet_db = spreadsheet.worksheet("DB_Items")
         
-        # 2. 取得資料內容 (Cached Data, TTL 300s)
         db_data, log_data, title, success, msg = _load_data_static(sheet_url)
         
         if not success:
@@ -404,7 +395,7 @@ def get_previous_meal_density(df_log_data):
     try:
         _df = df_log_data.copy()
         _df['Timestamp_dt'] = pd.to_datetime(_df['Timestamp'], errors='coerce')
-        # 剩食計算也要過濾寵物
+        
         current_pet = st.session_state.get('selected_pet_name', '')
         if 'Pet_Name' in _df.columns and current_pet:
              _df = _df[_df['Pet_Name'] == current_pet]
@@ -594,8 +585,7 @@ def save_finish_callback(finish_type, waste_net, waste_cal, bowl_w, meal_n, fini
         clear_finish_inputs_callback()
         st.session_state.just_saved = True
         
-        # [V2.0] 重要：寫入後清除快取，確保資料即時性
-        st.cache_data.clear()
+        st.cache_data.clear() # 清除快取
         st.rerun() 
     except Exception as e:
         st.session_state.finish_error = f"寫入失敗：{e}"
@@ -614,7 +604,7 @@ if 'finish_radio' not in st.session_state: st.session_state.finish_radio = "全�
 if 'nav_mode' not in st.session_state: st.session_state.nav_mode = "➕ 新增食物/藥品"
 if 'finish_error' not in st.session_state: st.session_state.finish_error = None
 
-# 讀取寵物列表 (這裡用 spreadsheet 物件，不快取，因為設定檔很小)
+# 讀取寵物列表
 pet_list = get_pet_list(spreadsheet)
 pet_names = [p['name'] for p in pet_list]
 
@@ -679,18 +669,25 @@ with st.sidebar:
     st.caption(f"將記錄為：{record_time_str}")
     
     if st.button("🔄 重新整理數據", type="primary"):
-        st.cache_data.clear() # [V2.0] 手動重整也清除快取
+        st.cache_data.clear() # 手動重整也清除快取
         st.rerun()
 
 # ----------------------------------------------------
-# 數據過濾
+# 數據過濾 - [V2.1] 強制篩選與防呆
 # ----------------------------------------------------
-if 'Pet_Name' in df_log.columns:
-    df_pet_log = df_log[df_log['Pet_Name'] == selected_pet].copy()
-    if df_pet_log.empty and selected_pet == pet_names[0]: 
-         df_pet_log = df_log[ (df_log['Pet_Name'] == selected_pet) | (df_log['Pet_Name'] == "") | (df_log['Pet_Name'].isna()) ].copy()
-else:
-    df_pet_log = df_log.copy() 
+# 檢查是否有 Pet_Name 欄位，沒有則視為全部屬於該寵物 (或第一隻)
+if 'Pet_Name' not in df_log.columns:
+    st.sidebar.error("⚠️ 資料表缺少 `Pet_Name` 欄位！請在 Google Sheet 的 Log_Data 分頁第一列新增 `Pet_Name` (建議在最後一欄)。")
+    # 暫時強制增加欄位以避免程式崩潰
+    df_log['Pet_Name'] = selected_pet
+
+# 進行篩選
+df_pet_log = df_log[df_log['Pet_Name'] == selected_pet].copy()
+
+# 如果該寵物完全沒資料，且是第一隻預設寵物，可能代表是舊資料格式
+if df_pet_log.empty and selected_pet == pet_names[0]:
+    # 嘗試抓取空白 Pet_Name 的資料當作預設寵物的資料
+    df_pet_log = df_log[ (df_log['Pet_Name'] == selected_pet) | (df_log['Pet_Name'] == "") | (df_log['Pet_Name'].isna()) ].copy()
 
 # ----------------------------------------------------
 # 4. 佈局實作
@@ -747,6 +744,7 @@ with col_dash:
         with st.expander("💊 今日保養與藥品服用", expanded=st.session_state.dash_med_open):
              st.markdown(render_supp_med_html(supp_list, med_list), unsafe_allow_html=True)
 
+        st.divider()
         
         # 2. 趨勢分析
         with st.expander("📈 趨勢分析", expanded=True):
@@ -1048,6 +1046,7 @@ with col_input:
                             str_time = f"{record_time_str}:00"
                             timestamp = f"{str_date} {str_time}"
                             
+                            # [V2.1] 取得目前寵物，確保寫入時有名字
                             current_pet = st.session_state.get('selected_pet_name', '大文')
 
                             for i, row_data in edited_df.iterrows():
@@ -1062,7 +1061,7 @@ with col_input:
                                     safe_net, safe_cal,
                                     orig_item.get('Prot_Sub', 0), orig_item.get('Fat_Sub', 0), 
                                     orig_item.get('Phos_Sub', 0), "", row_data['Item_Name'], "",
-                                    current_pet
+                                    current_pet # [V2.1] 寫入寵物名
                                 ]
                                 rows.append(row)
                             try:
@@ -1072,7 +1071,8 @@ with col_input:
                                 st.session_state.dash_stat_open = False
                                 st.session_state.dash_med_open = False
                                 st.session_state.meal_stats_open = False
-                                # [V2.0] 寫入後清除快取
+                                
+                                # [V2.1] 寫入後清除快取
                                 st.cache_data.clear()
                                 st.session_state.just_saved = True 
                                 st.rerun()
