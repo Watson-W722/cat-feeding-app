@@ -1,5 +1,4 @@
-# Python 程式碼 V12.0 (DaWen Trend Edition)
-# 基於 V11.6 增加：Plotly 互動式雙軸趨勢圖、快速日期區間選擇
+# Python 程式碼 V11.6 (完整修正版：捲動、防跳餐、DataEditor 錯誤修復)
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -9,10 +8,6 @@ from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime, timedelta, timezone
 import uuid
 import time 
-
-# [V12.0] 新增視覺化套件
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 
 # --- 1. 設定頁面 ---
 st.set_page_config(page_title="大文的飲食日記", page_icon="🐱", layout="wide")
@@ -83,41 +78,115 @@ def inject_custom_css():
             --bg: #F8FAFC;
             --text-muted: #5A6B8C;
         }
-        .stApp { background-color: var(--bg); font-family: 'Segoe UI', sans-serif; color: var(--navy); }
+        
+        /* 1. 全域強制設定：不管手機是深色或淺色模式，背景強制淺色，文字強制深藍 */
+        .stApp { 
+            background-color: var(--bg); 
+            font-family: 'Segoe UI', sans-serif; 
+            color: var(--navy); 
+        }
+        
+        /* 強制覆蓋 Streamlit 深色模式下的預設文字顏色 */
         .stMarkdown, .stRadio label, .stNumberInput label, .stSelectbox label, .stTextInput label, p, h1, h2, h3, h4, h5, h6, span, div {
             color: var(--navy) !important;
         }
+        
+        /* 特別處理輸入框內部的顏色 */
         .stNumberInput input, .stTextInput input, .stSelectbox div[data-baseweb="select"] {
-            color: var(--navy) !important; background-color: #ffffff !important;
+            color: var(--navy) !important;
+            background-color: #ffffff !important; /* 強制白底 */
         }
-        div[data-testid="stRadio"] label p { color: var(--navy) !important; }
+        
+        /* 修正 Radio Button 選項文字在深色模式下消失的問題 */
+        div[data-testid="stRadio"] label p {
+            color: var(--navy) !important;
+        }
+
         .block-container { padding-top: 1rem; padding-bottom: 5rem; }
-        h4 { font-size: 20px !important; font-weight: 700 !important; color: var(--navy) !important; padding-bottom: 0.5rem; margin-bottom: 0rem; }
-        div[data-testid="stVerticalBlock"] > div[style*="background-color"] {
-            background: white; border-radius: 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.04); border: 1px solid rgba(1, 33, 114, 0.1); padding: 24px;
+        
+        /* 標題樣式 */
+        h4 {
+            font-size: 20px !important;
+            font-weight: 700 !important;
+            color: var(--navy) !important;
+            padding-bottom: 0.5rem;
+            margin-bottom: 0rem;
         }
+
+        /* 容器樣式 */
+        div[data-testid="stVerticalBlock"] > div[style*="background-color"] {
+            background: white; border-radius: 16px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+            border: 1px solid rgba(1, 33, 114, 0.1);
+            padding: 24px;
+        }
+
+        /* 數據網格 */
         .grid-row-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px; }
         .grid-row-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 0px; }
+        
+        /* 2. iPhone/手機版面優化：螢幕小於 640px 時自動縮小字體與間距 */
         @media (max-width: 640px) { 
-            .grid-row-3 { gap: 6px; } 
-            .stat-item { padding: 10px 4px !important; } 
-            .stat-value { font-size: 24px !important; } 
-            .stat-header { font-size: 12px !important; } 
-            div[data-testid="stVerticalBlock"] > div[style*="background-color"] { padding: 16px; }
+            .grid-row-3 { gap: 6px; } /* 縮小卡片間距 */
+            .stat-item { padding: 10px 4px !important; } /* 縮小卡片內距 */
+            .stat-value { font-size: 24px !important; } /* 縮小數字字體 (原本32px) */
+            .stat-header { font-size: 12px !important; } /* 縮小標題字體 */
+            
+            /* 讓容器內距也小一點，爭取空間 */
+            div[data-testid="stVerticalBlock"] > div[style*="background-color"] {
+                padding: 16px;
+            }
         }
-        .stat-item { background: #fff; border: 2px solid #e2e8f0; border-radius: 12px; padding: 16px 12px; display: flex; flex-direction: column; align-items: center; text-align: center; }
-        .stat-header { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; font-size: 14px; font-weight: 700; color: var(--text-muted) !important; text-transform: uppercase; }
-        .stat-value { font-size: 32px; font-weight: 900; color: var(--navy) !important; line-height: 1.1; }
+
+        /* 數據單項 */
+        .stat-item { 
+            background: #fff; 
+            border: 2px solid #e2e8f0; 
+            border-radius: 12px; 
+            padding: 16px 12px; 
+            display: flex; flex-direction: column; align-items: center; text-align: center;
+        }
+        
+        .stat-header { 
+            display: flex; align-items: center; gap: 6px; margin-bottom: 8px; 
+            font-size: 14px; font-weight: 700; color: var(--text-muted) !important; text-transform: uppercase; 
+        }
+        
+        .stat-value { 
+            font-size: 32px; font-weight: 900; color: var(--navy) !important; line-height: 1.1; 
+        }
         .stat-unit { font-size: 14px; font-weight: 600; color: var(--text-muted) !important; margin-left: 2px; }
-        .simple-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0; background: #FDFDF9; border: 1px solid var(--beige); border-radius: 12px; padding: 10px 0; margin-bottom: 15px; width: 100%; }
-        .simple-item { text-align: center; padding: 0 2px; border-right: 1px solid rgba(1, 33, 114, 0.1); }
+        
+        /* 右欄小計 */
+        .simple-grid {
+            display: grid; grid-template-columns: repeat(5, 1fr); gap: 0;
+            background: #FDFDF9; border: 1px solid var(--beige);
+            border-radius: 12px; padding: 10px 0; margin-bottom: 15px;
+            width: 100%;
+        }
+        .simple-item {
+            text-align: center; padding: 0 2px;
+            border-right: 1px solid rgba(1, 33, 114, 0.1);
+        }
         .simple-item:last-child { border-right: none; }
         .simple-label { font-size: 11px; color: var(--text-muted) !important; font-weight: 700; }
         .simple-value { font-size: 16px; color: var(--navy) !important; font-weight: 800; }
         .simple-unit { font-size: 10px; color: var(--text-muted) !important; margin-left: 1px; }
+
+        /* Tags */
         .tag-container { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
-        .tag { display: inline-flex; align-items: center; padding: 6px 12px; border-radius: 8px; font-size: 14px; font-weight: 600; border: 1px solid transparent; color: var(--navy) !important; }
-        .tag-count { background: rgba(255,255,255,0.8); padding: 0px 6px; border-radius: 4px; font-size: 12px; font-weight: 800; margin-left: 6px; color: var(--navy) !important; }
+        .tag { 
+            display: inline-flex; align-items: center; padding: 6px 12px; 
+            border-radius: 8px; font-size: 14px; font-weight: 600; 
+            border: 1px solid transparent; color: var(--navy) !important;
+        }
+        .tag-count { 
+            background: rgba(255,255,255,0.8); padding: 0px 6px; 
+            border-radius: 4px; font-size: 12px; font-weight: 800; margin-left: 6px; 
+            color: var(--navy) !important;
+        }
+        
+        /* Colors */
         .bg-orange { background: #fff7ed; color: #f97316; }
         .bg-blue { background: #eff6ff; color: #3b82f6; }
         .bg-cyan { background: #ecfeff; color: #06b6d4; }
@@ -125,7 +194,15 @@ def inject_custom_css():
         .bg-yellow { background: #fefce8; color: #eab308; }
         .tag-green { background: #ecfdf5; border: 1px solid #d1fae5; color: #047857 !important; }
         .tag-red { background: #fff1f2; border: 1px solid #ffe4e6; color: #be123c !important; }
-        .main-header { display: flex; align-items: center; gap: 12px; margin-top: 5px; margin-bottom: 24px; padding: 20px; background: white; border-radius: 16px; border: 1px solid rgba(1, 33, 114, 0.1); box-shadow: 0 4px 6px rgba(0,0,0,0.02); }
+        
+        /* Header */
+        .main-header { 
+            display: flex; align-items: center; gap: 12px; 
+            margin-top: 5px; margin-bottom: 24px; 
+            padding: 20px; background: white; border-radius: 16px; 
+            border: 1px solid rgba(1, 33, 114, 0.1);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.02); 
+        }
         .header-icon { background: var(--navy); padding: 12px; border-radius: 12px; color: white !important; display: flex; }
     </style>
     """, unsafe_allow_html=True)
@@ -211,7 +288,6 @@ else:
 
 # [修正 1] 初始化 need_scroll 與定義 on_change 函式
 if 'need_scroll' not in st.session_state: st.session_state.need_scroll = False
-if 'range_radio' not in st.session_state: st.session_state.range_radio = "近 7 天"
 
 def on_cat_change():
     st.session_state.scale_val = None
@@ -569,149 +645,6 @@ with col_dash:
              st.markdown(render_daily_stats_html(day_stats), unsafe_allow_html=True)
         with st.expander("💊 今日保養與藥品服用", expanded=st.session_state.dash_med_open):
              st.markdown(render_supp_med_html(supp_list, med_list), unsafe_allow_html=True)
-        
-        # [V12.0 新增] 趨勢分析圖表區塊
-        with st.expander("📈 飲食趨勢分析 (近90天)", expanded=True):
-            # 1. 快速日期區間
-            range_option = st.radio(
-                "快速區間", 
-                ["近 7 天", "近 30 天", "近 90 天", "自訂"], 
-                horizontal=True,
-                label_visibility="collapsed",
-                key="range_radio"
-            )
-            
-            today_date = get_tw_time().date()
-            if range_option == "近 7 天":
-                d_start, d_end = today_date - timedelta(days=6), today_date
-            elif range_option == "近 30 天":
-                d_start, d_end = today_date - timedelta(days=29), today_date
-            elif range_option == "近 90 天":
-                d_start, d_end = today_date - timedelta(days=89), today_date
-            else:
-                d_start = today_date - timedelta(days=6)
-                d_end = today_date
-
-            c_date, c_blank = st.columns([2, 1])
-            with c_date:
-                date_range_val = st.date_input("選擇區間", value=(d_start, d_end), max_value=today_date)
-            
-            if isinstance(date_range_val, tuple) and len(date_range_val) == 2:
-                start_date, end_date = date_range_val
-            else:
-                start_date, end_date = d_start, d_end
-
-            # 2. 資料處理 (ETL)
-            if not df_log.empty:
-                # 複製並轉換日期格式
-                temp_dt = pd.to_datetime(df_log['Date'], format='%Y/%m/%d', errors='coerce')
-                df_valid = df_log[temp_dt.notna()].copy()
-                df_valid['Date_dt'] = temp_dt[temp_dt.notna()].dt.date
-                
-                # 篩選日期區間
-                mask_range = (df_valid['Date_dt'] >= start_date) & (df_valid['Date_dt'] <= end_date)
-                df_trend = df_valid[mask_range].copy()
-                
-                if not df_trend.empty:
-                    # 確保數值正確
-                    for c in ['Cal_Sub', 'Net_Quantity', 'Prot_Sub', 'Fat_Sub']:
-                        df_trend[c] = pd.to_numeric(df_trend[c], errors='coerce').fillna(0)
-                    
-                    # 清理重複完食紀錄
-                    df_trend = clean_duplicate_finish_records(df_trend)
-                    daily_groups = df_trend.groupby('Date_dt')
-                    
-                    trend_data = []
-                    for d, group in daily_groups:
-                        f_net, w_net = calculate_intake_breakdown(group)
-                        trend_data.append({
-                            'Date': d,
-                            'Calorie': group['Cal_Sub'].sum(),
-                            'Food_g': f_net,
-                            'Water_ml': w_net
-                        })
-                    
-                    df_chart = pd.DataFrame(trend_data).sort_values('Date')
-                    
-                    # 計算 7日移動平均 (MA7) - 觀察長期趨勢用
-                    df_chart['Cal_MA7'] = df_chart['Calorie'].rolling(window=7, min_periods=1).mean()
-                    df_chart['Water_MA7'] = df_chart['Water_ml'].rolling(window=7, min_periods=1).mean()
-
-                    # 3. 繪製 Plotly 圖表
-                    # 建立雙軸圖表 (左軸: 熱量, 右軸: 水分)
-                    fig = make_subplots(specs=[[{"secondary_y": True}]])
-
-                    # [Bar] 每日熱量
-                    fig.add_trace(
-                        go.Bar(
-                            x=df_chart['Date'], 
-                            y=df_chart['Calorie'], 
-                            name="熱量 (kcal)",
-                            marker_color='#FFD700', # 金黃色
-                            opacity=0.6
-                        ),
-                        secondary_y=False
-                    )
-
-                    # [Line] 7日熱量平均線 (趨勢)
-                    fig.add_trace(
-                        go.Scatter(
-                            x=df_chart['Date'], 
-                            y=df_chart['Cal_MA7'], 
-                            name="熱量 (7日平均)",
-                            line=dict(color='#FF8C00', width=3), # 深橘色
-                            mode='lines'
-                        ),
-                        secondary_y=False
-                    )
-
-                    # [Line] 每日飲水 (放在右軸)
-                    fig.add_trace(
-                        go.Scatter(
-                            x=df_chart['Date'], 
-                            y=df_chart['Water_ml'], 
-                            name="飲水 (ml)",
-                            line=dict(color='#00BFFF', width=2, dash='dot'), # 亮藍色虛線
-                            mode='lines+markers'
-                        ),
-                        secondary_y=True
-                    )
-                    
-                    # [Line] 7日飲水平均線
-                    fig.add_trace(
-                        go.Scatter(
-                            x=df_chart['Date'], 
-                            y=df_chart['Water_MA7'], 
-                            name="飲水 (7日平均)",
-                            line=dict(color='#0000FF', width=2), # 深藍色實線
-                            mode='lines'
-                        ),
-                        secondary_y=True
-                    )
-
-                    # 設定圖表版面
-                    fig.update_layout(
-                        title_text=f"📊 大文的飲食趨勢 ({start_date.strftime('%m/%d')} - {end_date.strftime('%m/%d')})",
-                        height=400,
-                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                        margin=dict(l=20, r=20, t=50, b=20),
-                        hovermode="x unified"
-                    )
-                    
-                    # 設定軸標籤
-                    fig.update_yaxes(title_text="熱量 (kcal)", secondary_y=False)
-                    fig.update_yaxes(title_text="飲水 (ml)", secondary_y=True, showgrid=False)
-
-                    st.plotly_chart(fig, use_container_width=True)
-                    
-                    # 顯示簡易平均
-                    avg_cal = df_chart['Calorie'].mean()
-                    avg_water = df_chart['Water_ml'].mean()
-                    st.info(f"📅 此區間平均：熱量 **{avg_cal:.0f}** kcal/日 | 飲水 **{avg_water:.0f}** ml/日")
-                else:
-                    st.info("⚠️ 此日期區間無資料")
-            else:
-                st.info("尚無任何紀錄")
 
 # --- 右欄：操作區 ---
 with col_input:
