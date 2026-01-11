@@ -565,12 +565,7 @@ col_dash, col_input = st.columns([4, 3], gap="medium")
 with col_dash:
     with st.container(border=True):
         st.markdown("#### 📊 本日健康總覽")
-        with st.expander("📝 今日營養攝取", expanded=st.session_state.dash_stat_open):
-             st.markdown(render_daily_stats_html(day_stats), unsafe_allow_html=True)
-        with st.expander("💊 今日保養與藥品服用", expanded=st.session_state.dash_med_open):
-             st.markdown(render_supp_med_html(supp_list, med_list), unsafe_allow_html=True)
-        
-        # [V12.0 新增] 趨勢分析圖表區塊
+                # [V12.0 新增] 趨勢分析圖表區塊
         with st.expander("📈 飲食趨勢分析 (近90天)", expanded=True):
             # 1. 快速日期區間
             range_option = st.radio(
@@ -719,9 +714,12 @@ with col_dash:
                     # 設定圖表版面
                     fig.update_layout(
                         title_text=f"📊 大文的飲食趨勢 ({start_date.strftime('%m/%d')} - {end_date.strftime('%m/%d')})",
-                        height=500, # 稍微加高一點以免擁擠
-                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                        margin=dict(l=20, r=20, t=50, b=20),
+                        height=550, # 稍微加高一點以免擁擠
+                        legend=dict(orientation="h",   # 水平排列
+                                    yanchor="top", y=-0.15,  # 移到 X 軸下方
+                                    xanchor="center", x=0.5  # 居中對齊
+                                    ),
+                        margin=dict(l=20, r=20, t=50, b=100),# b=100 增加底部邊距，避免圖例被切掉
                         hovermode="x unified",
                         barmode='group' # 關鍵設定：讓兩組 Bar 並排顯示而非堆疊
                     )
@@ -741,6 +739,12 @@ with col_dash:
                     st.info("⚠️ 此日期區間無資料")
             else:
                 st.info("尚無任何紀錄")
+        with st.expander("📝 今日營養攝取", expanded=st.session_state.dash_stat_open):
+             st.markdown(render_daily_stats_html(day_stats), unsafe_allow_html=True)
+        with st.expander("💊 今日保養與藥品服用", expanded=st.session_state.dash_med_open):
+             st.markdown(render_supp_med_html(supp_list, med_list), unsafe_allow_html=True)
+        
+
 
 # --- 右欄：操作區 ---
 with col_input:
