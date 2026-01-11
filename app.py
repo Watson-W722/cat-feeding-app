@@ -566,7 +566,7 @@ with col_dash:
     with st.container(border=True):
         st.markdown("#### 📊 本日健康總覽")
                 # [V12.0 新增] 趨勢分析圖表區塊
-        with st.expander("📈 飲食趨勢分析 (近90天)", expanded=False):
+        with st.expander("📈 飲食趨勢分析", expanded=False):
             # 1. 快速日期區間
             range_option = st.radio(
                 "快速區間", 
