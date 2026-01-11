@@ -1,5 +1,7 @@
-# Python 程式碼 (公開體驗版 Public Beta) - V2.3.1
-# 修正重點：修復 NameError (補上 wait_fixed 引用)，解決 API Quota Exceeded 問題
+# Python 程式碼 (公開體驗版 Public Beta) - V2.4.0
+# 更新日誌：
+# [V2.4.0] 新增 Plotly 互動式趨勢圖 (雙軸+移動平均線)，新增快速日期區間選擇。
+# [V2.3.1] 修復 NameError (補上 wait_fixed 引用)，解決 API Quota Exceeded 問題。
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -12,11 +14,14 @@ import time
 from PIL import Image, ImageOps 
 import io
 import base64
-# [V2.3.1] 修正：補上 wait_fixed
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, wait_fixed
 
+# [V2.4.0] 新增視覺化套件
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
 # --- 1. 設定頁面 ---
-st.set_page_config(page_title="貓咪飲食紀錄 (體驗版)", page_icon="🐱", layout="wide")
+st.set_page_config(page_title="貓咪飲食紀錄 (V2.4)", page_icon="🐱", layout="wide")
 
 # ==========================================
 #      設定區
@@ -616,6 +621,7 @@ if 'just_added' not in st.session_state: st.session_state.just_added = False
 if 'finish_radio' not in st.session_state: st.session_state.finish_radio = "全部吃光 (盤光光)"
 if 'nav_mode' not in st.session_state: st.session_state.nav_mode = "➕ 新增食物/藥品"
 if 'finish_error' not in st.session_state: st.session_state.finish_error = None
+if 'range_radio' not in st.session_state: st.session_state.range_radio = "近 7 天"
 
 # 讀取寵物列表
 pet_list = get_pet_list(spreadsheet)
@@ -757,20 +763,41 @@ with col_dash:
              st.markdown(render_supp_med_html(supp_list, med_list), unsafe_allow_html=True)
 
         
-        # 2. 趨勢分析
+        # 2. 趨勢分析 [V2.4 更新：互動圖表]
         with st.expander("📈 趨勢分析", expanded=True):
-            default_end = get_tw_time().date()
-            default_start = default_end - timedelta(days=6)
             
+            # --- 快速日期選擇 ---
+            range_option = st.radio(
+                "快速區間", 
+                ["近 7 天", "近 30 天", "近 90 天", "自訂"], 
+                horizontal=True,
+                label_visibility="collapsed",
+                key="range_radio"
+            )
+            
+            today_date = get_tw_time().date()
+            if range_option == "近 7 天":
+                d_start, d_end = today_date - timedelta(days=6), today_date
+            elif range_option == "近 30 天":
+                d_start, d_end = today_date - timedelta(days=29), today_date
+            elif range_option == "近 90 天":
+                d_start, d_end = today_date - timedelta(days=89), today_date
+            else:
+                d_start = today_date - timedelta(days=6)
+                d_end = today_date
+
             c_date, c_blank = st.columns([2, 1])
             with c_date:
-                date_range = st.date_input("選擇區間", value=(default_start, default_end), max_value=default_end)
+                # 若選擇自訂，則此 Input 才會真正生效，否則只是顯示計算後的結果
+                date_range_val = st.date_input("選擇區間", value=(d_start, d_end), max_value=today_date)
             
-            if isinstance(date_range, tuple) and len(date_range) == 2:
-                start_date, end_date = date_range
+            # 確保有兩個值 (Start, End)
+            if isinstance(date_range_val, tuple) and len(date_range_val) == 2:
+                start_date, end_date = date_range_val
             else:
-                start_date, end_date = default_start, default_end
+                start_date, end_date = d_start, d_end
 
+            # --- 資料處理與繪圖 ---
             if not df_pet_log.empty:
                 temp_dt = pd.to_datetime(df_pet_log['Date'], format='%Y/%m/%d', errors='coerce')
                 df_valid = df_pet_log[temp_dt.notna()].copy()
@@ -791,22 +818,91 @@ with col_dash:
                         f_net, w_net = calculate_intake_breakdown(group)
                         trend_data.append({
                             'Date': d,
-                            '熱量 (kcal)': group['Cal_Sub'].sum(),
-                            '食物 (g)': f_net,
-                            '飲水 (ml)': w_net
+                            'Calorie': group['Cal_Sub'].sum(),
+                            'Food_g': f_net,
+                            'Water_ml': w_net
                         })
                     
-                    df_chart = pd.DataFrame(trend_data).set_index('Date')
+                    df_chart = pd.DataFrame(trend_data).sort_values('Date')
                     
-                    tab1, tab2 = st.tabs(["🔥 熱量與食量", "💧 飲水量"])
-                    with tab1:
-                        st.bar_chart(df_chart[['熱量 (kcal)', '食物 (g)']])
-                    with tab2:
-                        st.line_chart(df_chart['飲水 (ml)'])
+                    # 計算 7日移動平均 (MA7)
+                    df_chart['Cal_MA7'] = df_chart['Calorie'].rolling(window=7, min_periods=1).mean()
+                    df_chart['Water_MA7'] = df_chart['Water_ml'].rolling(window=7, min_periods=1).mean()
+
+                    # --- Plotly 互動圖表實作 ---
+                    fig = make_subplots(specs=[[{"secondary_y": True}]])
+
+                    # [Bar] 每日熱量
+                    fig.add_trace(
+                        go.Bar(
+                            x=df_chart['Date'], 
+                            y=df_chart['Calorie'], 
+                            name="熱量 (kcal)",
+                            marker_color='#FFD700', # 金黃色
+                            opacity=0.6
+                        ),
+                        secondary_y=False
+                    )
+
+                    # [Line] 7日熱量平均線
+                    fig.add_trace(
+                        go.Scatter(
+                            x=df_chart['Date'], 
+                            y=df_chart['Cal_MA7'], 
+                            name="熱量 (7日平均)",
+                            line=dict(color='#FF8C00', width=3), # 深橘色
+                            mode='lines'
+                        ),
+                        secondary_y=False
+                    )
+
+                    # [Line] 每日飲水 (右軸)
+                    fig.add_trace(
+                        go.Scatter(
+                            x=df_chart['Date'], 
+                            y=df_chart['Water_ml'], 
+                            name="飲水 (ml)",
+                            line=dict(color='#00BFFF', width=2, dash='dot'), # 亮藍色虛線
+                            mode='lines+markers'
+                        ),
+                        secondary_y=True
+                    )
+                    
+                    # [Line] 7日飲水平均線
+                    fig.add_trace(
+                        go.Scatter(
+                            x=df_chart['Date'], 
+                            y=df_chart['Water_MA7'], 
+                            name="飲水 (7日平均)",
+                            line=dict(color='#0000FF', width=2), # 深藍色實線
+                            mode='lines'
+                        ),
+                        secondary_y=True
+                    )
+
+                    # 設定圖表版面
+                    fig.update_layout(
+                        title_text=f"📊 {selected_pet} 的飲食趨勢 ({start_date.strftime('%m/%d')} - {end_date.strftime('%m/%d')})",
+                        height=400,
+                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                        margin=dict(l=20, r=20, t=50, b=20),
+                        hovermode="x unified"
+                    )
+                    
+                    fig.update_yaxes(title_text="熱量 (kcal)", secondary_y=False)
+                    fig.update_yaxes(title_text="飲水 (ml)", secondary_y=True, showgrid=False)
+
+                    st.plotly_chart(fig, use_container_width=True)
+                    
+                    # 顯示簡易平均數據
+                    avg_cal = df_chart['Calorie'].mean()
+                    avg_water = df_chart['Water_ml'].mean()
+                    st.info(f"📅 區間平均：熱量 **{avg_cal:.0f}** kcal/日 | 飲水 **{avg_water:.0f}** ml/日")
+
                 else:
-                    st.info("此區間無資料")
+                    st.info("⚠️ 此日期區間無資料")
             else:
-                st.info("尚無紀錄")
+                st.info("尚無任何紀錄")
 
 # --- 右欄：操作區 ---
 with col_input:
