@@ -639,47 +639,61 @@ with col_dash:
                     df_chart['Food_MA7'] = df_chart['Food_g'].rolling(window=7, min_periods=1).mean()
 
                     # 3. 繪製 Plotly 圖表
-                    # 建立雙軸圖表 (左軸: 熱量/食物重, 右軸: 水分)
+                    # 建立雙軸圖表 (左軸: 熱量/食量, 右軸: 水分)
                     fig = make_subplots(specs=[[{"secondary_y": True}]])
 
-                    # [Bar] 每日熱量 (背景柱狀圖)
+                    # --- 1. 熱量 (金黃色系) ---
+                    # [Bar] 每日熱量
                     fig.add_trace(
                         go.Bar(
                             x=df_chart['Date'], 
                             y=df_chart['Calorie'], 
                             name="熱量 (kcal)",
                             marker_color='#FFD700', # 金黃色
-                            opacity=0.3
+                            opacity=0.6,
+                            offsetgroup=0 # 分組設定，讓它跟食量並排
                         ),
                         secondary_y=False
                     )
-
-                    # [Line] 7日熱量平均線 (橘色實線)
+                    # [Line] 熱量趨勢
                     fig.add_trace(
                         go.Scatter(
                             x=df_chart['Date'], 
                             y=df_chart['Cal_MA7'], 
                             name="熱量 (7日平均)",
-                            line=dict(color='#FF8C00', width=3), 
+                            line=dict(color='#FF8C00', width=3), # 深橘色
                             mode='lines'
                         ),
                         secondary_y=False
                     )
 
-                    # [Line - 新增] 7日食物重量平均線 (綠色虛線)
-                    # 放在左軸，因為食物克數跟熱量數值級距通常較接近
+                    # --- 2. 食量 (綠色系) ---
+                    # [Bar] 每日食量 (新增)
+                    fig.add_trace(
+                        go.Bar(
+                            x=df_chart['Date'], 
+                            y=df_chart['Food_g'], 
+                            name="食量 (g)",
+                            marker_color='#90EE90', # 淺綠色
+                            opacity=0.6,
+                            offsetgroup=1 # 分組設定，讓它跟熱量並排
+                        ),
+                        secondary_y=False
+                    )
+                    # [Line] 食量趨勢
                     fig.add_trace(
                         go.Scatter(
                             x=df_chart['Date'], 
                             y=df_chart['Food_MA7'], 
                             name="食量 (7日平均)",
-                            line=dict(color='#2E8B57', width=2, dash='dash'), # SeaGreen 綠色虛線
+                            line=dict(color='#2E8B57', width=2, dash='dash'), # 深綠色虛線
                             mode='lines'
                         ),
                         secondary_y=False
                     )
 
-                    # [Line] 每日飲水 (右軸 - 藍色點線)
+                    # --- 3. 飲水 (藍色系，右軸) ---
+                    # [Line] 每日飲水 (點線)
                     fig.add_trace(
                         go.Scatter(
                             x=df_chart['Date'], 
@@ -690,8 +704,7 @@ with col_dash:
                         ),
                         secondary_y=True
                     )
-                    
-                    # [Line] 7日飲水平均線 (右軸 - 藍色實線)
+                    # [Line] 飲水趨勢 (實線)
                     fig.add_trace(
                         go.Scatter(
                             x=df_chart['Date'], 
@@ -706,19 +719,20 @@ with col_dash:
                     # 設定圖表版面
                     fig.update_layout(
                         title_text=f"📊 大文的飲食趨勢 ({start_date.strftime('%m/%d')} - {end_date.strftime('%m/%d')})",
-                        height=450,
+                        height=500, # 稍微加高一點以免擁擠
                         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
                         margin=dict(l=20, r=20, t=50, b=20),
-                        hovermode="x unified"
+                        hovermode="x unified",
+                        barmode='group' # 關鍵設定：讓兩組 Bar 並排顯示而非堆疊
                     )
                     
                     # 設定軸標籤
-                    fig.update_yaxes(title_text="熱量 (kcal) / 食物 (g)", secondary_y=False)
+                    fig.update_yaxes(title_text="熱量 (kcal) / 食量 (g)", secondary_y=False)
                     fig.update_yaxes(title_text="飲水 (ml)", secondary_y=True, showgrid=False)
 
                     st.plotly_chart(fig, use_container_width=True)
                     
-                    # 顯示簡易平均 (新增食量)
+                    # 顯示簡易平均
                     avg_cal = df_chart['Calorie'].mean()
                     avg_water = df_chart['Water_ml'].mean()
                     avg_food = df_chart['Food_g'].mean()
