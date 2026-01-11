@@ -566,7 +566,7 @@ with col_dash:
     with st.container(border=True):
         st.markdown("#### 📊 本日健康總覽")
                 # [V12.0 新增] 趨勢分析圖表區塊
-        with st.expander("📈 飲食趨勢分析 (近90天)", expanded=True):
+        with st.expander("📈 飲食趨勢分析 (近90天)", expanded=False):
             # 1. 快速日期區間
             range_option = st.radio(
                 "快速區間", 
@@ -713,13 +713,14 @@ with col_dash:
 
                     # 設定圖表版面
                     fig.update_layout(
-                        title_text=f"📊 大文的飲食趨勢 ({start_date.strftime('%m/%d')} - {end_date.strftime('%m/%d')})",
+                        # title_text=f"📊 大文的飲食趨勢 ({start_date.strftime('%m/%d')} - {end_date.strftime('%m/%d')})",
+                        # <-- 【刪除】這行，不要在圖表內寫標題
                         height=550, # 稍微加高一點以免擁擠
                         legend=dict(orientation="h",   # 水平排列
                                     yanchor="top", y=-0.15,  # 移到 X 軸下方
                                     xanchor="center", x=0.5  # 居中對齊
                                     ),
-                        margin=dict(l=20, r=20, t=50, b=100),# b=100 增加底部邊距，避免圖例被切掉
+                        margin=dict(l=20, r=20, t=20, b=100),# b=100 增加底部邊距，避免圖例被切掉
                         hovermode="x unified",
                         barmode='group' # 關鍵設定：讓兩組 Bar 並排顯示而非堆疊
                     )
@@ -728,6 +729,10 @@ with col_dash:
                     fig.update_yaxes(title_text="熱量 (kcal) / 食量 (g)", secondary_y=False)
                     fig.update_yaxes(title_text="飲水 (ml)", secondary_y=True, showgrid=False)
 
+                    # 【新增】 在這裡用 Streamlit 的 Markdown 顯示標題
+                    st.markdown(f"##### 📊 大文的飲食趨勢 ({start_date.strftime('%m/%d')} - {end_date.strftime('%m/%d')})")
+                    
+                    # 渲染圖表
                     st.plotly_chart(fig, use_container_width=True)
                     
                     # 顯示簡易平均
