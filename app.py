@@ -1,5 +1,5 @@
-# Python 程式碼 V12.0 (DaWen Trend Edition)
-# 基於 V11.6 增加：Plotly 互動式雙軸趨勢圖、快速日期區間選擇
+# Python 程式碼 V12.1 (2026 Fix Edition)
+# 修正 2026 年 Streamlit API 移除 use_container_width 的問題
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -73,7 +73,7 @@ def calculate_intake_breakdown(df):
     final_food_net = input_food + (total_waste * ratio_food)
     return final_food_net, final_water_net
 
-# [V11.7.1] CSS 注入 (針對手機跑版與深色模式修復)
+# CSS 注入
 def inject_custom_css():
     st.markdown("""
     <style>
@@ -153,7 +153,6 @@ def render_supp_med_html(supp_list, med_list):
     def get_tag_html(items, type_class):
         if not items: return '<span style="color:#5A6B8C; font-size:13px;">無</span>'
         return "".join([f'<span class="tag {type_class}">{item["name"]}<span class="tag-count">x{int(item["count"])}</span></span>' for item in items])
-    icons = {"pill": "💊", "leaf": "🌿"} 
     html = '<div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px;">'
     html += f'<div><div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;font-size:12px;font-weight:700;color:#047857;">保養品</div><div class="tag-container">{get_tag_html(supp_list, "tag-green")}</div></div>'
     html += f'<div style="border-left:1px solid #f1f5f9;padding-left:20px;"><div><div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;font-size:12px;font-weight:700;color:#be123c;">藥品</div><div class="tag-container">{get_tag_html(med_list, "tag-red")}</div></div></div></div>'
@@ -183,7 +182,6 @@ except Exception as e:
     st.error(f"連線失敗：{e}")
     st.stop()
 
-# --- 讀取資料 ---
 @st.cache_data(ttl=5)
 def load_data():
     db_data = sheet_db.get_all_records()
@@ -206,10 +204,9 @@ else:
     st.stop()
 
 # ==========================================
-#      邏輯函數區 (Callback)
+#      邏輯函數區
 # ==========================================
 
-# [修正 1] 初始化 need_scroll 與定義 on_change 函式
 if 'need_scroll' not in st.session_state: st.session_state.need_scroll = False
 if 'range_radio' not in st.session_state: st.session_state.range_radio = "近 7 天"
 
@@ -227,63 +224,35 @@ def reset_meal_inputs():
     st.session_state.waste_tare = None
     st.session_state.finish_radio = "全部吃光 (盤光光)"
 
-# [新增] 動態計算上一餐剩食的營養密度
 def get_previous_meal_density(df_log):
     if df_log.empty: return None
-    
-    # 1. 找到最近一筆 "WASTE" (有剩餘) 的紀錄
-    # 先確保有 Timestamp 欄位並排序
     try:
         df_log['Timestamp_dt'] = pd.to_datetime(df_log['Timestamp'], errors='coerce')
         df_waste = df_log[df_log['ItemID'] == 'WASTE'].copy()
-        
         if df_waste.empty: return None
-        
-        # 取得最後一筆 (最近的) 剩餘紀錄
         last_waste = df_waste.sort_values('Timestamp_dt').iloc[-1]
         target_date = last_waste['Date']
         target_meal = last_waste['Meal_Name']
-        
-        # 2. 撈取那一餐的所有食材 (Input)
         mask_meal = (df_log['Date'] == target_date) & (df_log['Meal_Name'] == target_meal)
         df_target = df_log[mask_meal].copy()
-        
-        # 排除藥品、保養品、以及 WASTE/FINISH 結算列
         exclude_cats = ['藥品', '保養品']
         exclude_items = ['WASTE', 'FINISH']
-        
-        # 確保數值型態
         for col in ['Net_Quantity', 'Cal_Sub', 'Prot_Sub', 'Fat_Sub', 'Phos_Sub']:
             df_target[col] = pd.to_numeric(df_target[col], errors='coerce').fillna(0)
-            
-        # 篩選出食材 (Net_Quantity > 0 代表投入的食材)
-        mask_valid = (
-            ~df_target['Category'].isin(exclude_cats) & 
-            ~df_target['ItemID'].isin(exclude_items) &
-            (df_target['Net_Quantity'] > 0)
-        )
-        
+        mask_valid = (~df_target['Category'].isin(exclude_cats) & ~df_target['ItemID'].isin(exclude_items) & (df_target['Net_Quantity'] > 0))
         df_foods = df_target[mask_valid]
-        
         if df_foods.empty: return None
-        
-        # 3. 計算平均密度 (每 1g 含有多少營養)
         total_weight = df_foods['Net_Quantity'].sum()
-        
         if total_weight <= 0: return None
-        
         density = {
             'cal': df_foods['Cal_Sub'].sum() / total_weight,
             'prot': df_foods['Prot_Sub'].sum() / total_weight,
             'fat': df_foods['Fat_Sub'].sum() / total_weight,
             'phos': df_foods['Phos_Sub'].sum() / total_weight,
-            'info': f"依據 {target_date} {target_meal}" # 供顯示用
+            'info': f"依據 {target_date} {target_meal}"
         }
         return density
-        
-    except Exception as e:
-        print(f"Error calc density: {e}")
-        return None
+    except: return None
 
 def add_to_cart_callback(bowl_w, last_ref_w, last_ref_n):   
     category = st.session_state.get('cat_select', '請選擇...')
@@ -291,810 +260,224 @@ def add_to_cart_callback(bowl_w, last_ref_w, last_ref_n):
     raw_scale = st.session_state.get('scale_val')
     scale_reading = safe_float(raw_scale)
     is_zeroed = st.session_state.get('check_zero', False)
-    
-    if category == "請選擇..." or item_name == "請先選類別" or scale_reading <= 0:
-        return
-
+    if category == "請選擇..." or item_name == "請先選類別" or scale_reading <= 0: return
     unit = unit_map.get(item_name, "g")
     net_weight = 0.0
-    
-    # 智慧判斷下一筆的參考基準 (Chain of Weight)
     if unit in ["顆", "粒", "錠", "膠囊", "次"]:
         net_weight = scale_reading
         db_scale_reading = last_ref_w  
     else:
         if is_zeroed:
             net_weight = scale_reading
-            # 歸零單獨秤重，參考基準要累加
             db_scale_reading = last_ref_w + net_weight 
         else:
-            if scale_reading < last_ref_w:
-                return 
+            if scale_reading < last_ref_w: return 
             net_weight = scale_reading - last_ref_w
             db_scale_reading = scale_reading
-
     item_id = item_map.get(item_name, "")
     cat_real = cat_map.get(item_name, "")
-
-
-    # [修正] 預設從 DB 讀取數值
     cal_val = safe_float(cal_map.get(item_name, 0))
     prot_val = safe_float(prot_map.get(item_name, 0))
     fat_val = safe_float(fat_map.get(item_name, 0))
     phos_val = safe_float(phos_map.get(item_name, 0))
-
-     # [新增] 判斷是否為 "LEFTOVER"，如果是，動態計算上一餐密度
     if item_id == "LEFTOVER":
         density_data = get_previous_meal_density(df_log)
         if density_data:
-            # 覆蓋原本的查表數值 (注意：這裡算出的是每 1g 的數值，而 DB 通常是每 100g)
-            # 因為下面的公式是 net_weight * cal_val / 100
-            # 所以我們要先把密度 * 100 轉回 "每 100g" 的格式，才能套用原本公式
             cal_val = density_data['cal'] * 100
             prot_val = density_data['prot'] * 100
             fat_val = density_data['fat'] * 100
             phos_val = density_data['phos'] * 100
             st.toast(f"🔍 已自動代入 {density_data['info']} 的營養密度")
-        else:
-            st.warning("⚠️ 找不到上一餐的剩餘紀錄，將使用預設數值 (可能為 0)")
-
     if unit in ["顆", "粒", "錠", "膠囊", "次"]:
-        cal = net_weight * cal_val
-        prot = net_weight * prot_val
-        fat = net_weight * fat_val
-        phos = net_weight * phos_val
+        cal, prot, fat, phos = net_weight*cal_val, net_weight*prot_val, net_weight*fat_val, net_weight*phos_val
     else:
-        cal = net_weight * cal_val / 100
-        prot = net_weight * prot_val / 100
-        fat = net_weight * fat_val / 100
-        phos = net_weight * phos_val / 100
-
-    # 為了確保重整後不跳餐，先讀取目前餐別
+        cal, prot, fat, phos = net_weight*cal_val/100, net_weight*prot_val/100, net_weight*fat_val/100, net_weight*phos_val/100
     current_meal = st.session_state.meal_selector
-
     st.session_state.cart.append({
-        "Category": cat_real,
-        "ItemID": item_id,
-        "Item_Name": item_name,
-        "Scale_Reading": db_scale_reading,
-        "Bowl_Weight": bowl_w,
-        "Net_Quantity": net_weight,
-        "Cal_Sub": cal,
-        "Prot_Sub": prot,
-        "Fat_Sub": fat,
-        "Phos_Sub": phos,
-        "Unit": unit
+        "Category": cat_real, "ItemID": item_id, "Item_Name": item_name,
+        "Scale_Reading": db_scale_reading, "Bowl_Weight": bowl_w, "Net_Quantity": net_weight,
+        "Cal_Sub": cal, "Prot_Sub": prot, "Fat_Sub": fat, "Phos_Sub": phos, "Unit": unit
     })
-
-    # 重置輸入
-    st.session_state.scale_val = None
-    st.session_state.check_zero = False
-    st.session_state.dash_stat_open = False
-    st.session_state.dash_med_open = False
-    st.session_state.meal_stats_open = False
-    
-    # [修正 3] 關鍵：將讀取到的餐別寫回，防止跳回第一餐
+    st.session_state.scale_val, st.session_state.check_zero = None, False
+    st.session_state.dash_stat_open, st.session_state.dash_med_open, st.session_state.meal_stats_open = False, False, False
     st.session_state.meal_selector = current_meal
-    
     st.session_state.just_added = True 
 
-# 用於按鈕 on_click 的鎖定函式
 def lock_meal_state():
     if 'meal_selector' in st.session_state:
         st.session_state.meal_selector = st.session_state.meal_selector
 
-# [修正] 針對 save_finish_callback 增加刪除條件的嚴謹度
 def save_finish_callback(finish_type, waste_net, waste_cal, bowl_w, meal_n, finish_time_str, finish_date_obj, record_date_obj):
     if finish_type == "有剩餘 (需秤重)" and waste_net <= 0:
-        st.session_state.finish_error = "剩餘重量計算錯誤，請檢查輸入數值。"
+        st.session_state.finish_error = "剩餘重量計算錯誤"
         return
-
-    # Database 欄位：Date (歸屬日期)
     str_date_for_db = record_date_obj.strftime("%Y/%m/%d")
-    
-    # 實際完食時間 (顯示用)
     str_finish_date = finish_date_obj.strftime("%Y/%m/%d")
     str_time_finish = f"{finish_time_str}:00"
     timestamp = f"{str_finish_date} {str_time_finish}"
-    
     final_waste_net = -waste_net if finish_type == "有剩餘 (需秤重)" else 0
     final_waste_cal = -waste_cal if finish_type == "有剩餘 (需秤重)" else 0
     item_id_code = "WASTE" if finish_type == "有剩餘 (需秤重)" else "FINISH"
     category_code = "剩食" if finish_type == "有剩餘 (需秤重)" else "完食"
-
-    # 注意：這裡固定寫入 Item_Name 為 "完食紀錄"，這將成為我們識別系統紀錄的關鍵
-    row = [
-        str(uuid.uuid4()), 
-        timestamp,         
-        str_date_for_db,   
-        str_time_finish,   
-        meal_n,
-        item_id_code, category_code, 0, bowl_w, 
-        final_waste_net, final_waste_cal, 
-        0, 0, 0, "",
-        "完食紀錄", finish_time_str
-    ]
-    
+    row = [str(uuid.uuid4()), timestamp, str_date_for_db, str_time_finish, meal_n, item_id_code, category_code, 0, bowl_w, final_waste_net, final_waste_cal, 0, 0, 0, "", "完食紀錄", finish_time_str]
     try:
         current_data = sheet_log.get_all_values()
         header = current_data[0]
-        try:
-            date_idx = header.index('Date')
-            meal_idx = header.index('Meal_Name')
-            item_idx = header.index('ItemID')
-            # [修正] 取得 Item_Name 的欄位位置 (通常是 15)
-            name_idx = header.index('Item_Name') 
-        except ValueError:
-            # Fallback (如果欄位沒對齊)
-            date_idx = 2; meal_idx = 4; item_idx = 5; name_idx = 15
-
-        rows_to_delete = []
-        for i in range(len(current_data) - 1, 0, -1):
-            r = current_data[i]
-            # [修正] 刪除條件變得更嚴謹：
-            # 1. 日期相同
-            # 2. 餐別相同
-            # 3. ID 是 WASTE 或 FINISH
-            # 4. (新增) 品名必須是 "完食紀錄" <-- 這能保護您自己加入的食材不被刪除
-            if (r[date_idx] == str_date_for_db and 
-                r[meal_idx] == meal_n and 
-                r[item_idx] in ['WASTE', 'FINISH'] and 
-                len(r) > name_idx and r[name_idx] == "完食紀錄"):
-                
-                rows_to_delete.append(i + 1)
-        
-        for r_idx in rows_to_delete:
-            sheet_log.delete_rows(r_idx)
-            
+        date_idx, meal_idx, item_idx, name_idx = header.index('Date'), header.index('Meal_Name'), header.index('ItemID'), header.index('Item_Name')
+        rows_to_delete = [i+1 for i, r in enumerate(current_data[1:], 1) if (r[date_idx] == str_date_for_db and r[meal_idx] == meal_n and r[item_idx] in ['WASTE', 'FINISH'] and len(r) > name_idx and r[name_idx] == "完食紀錄")]
+        for r_idx in sorted(rows_to_delete, reverse=True): sheet_log.delete_rows(r_idx)
         sheet_log.append_row(row)
         st.toast("✅ 完食紀錄已更新")
-        
-        # 鎖定餐別
         st.session_state.meal_selector = meal_n
-        
         load_data.clear()
-        clear_finish_inputs_callback()
+        st.session_state.waste_gross, st.session_state.waste_tare = None, None
         st.session_state.just_saved = True
         st.rerun() 
-    except Exception as e:
-        st.session_state.finish_error = f"寫入失敗：{e}"
-
-def clear_finish_inputs_callback():
-    st.session_state.waste_gross = None
-    st.session_state.waste_tare = None
+    except Exception as e: st.session_state.finish_error = f"寫入失敗：{e}"
 
 # ==========================================
-#      UI 佈局開始
+#      UI 佈局
 # ==========================================
 
-# 注入 CSS
 inject_custom_css()
 
 # 初始化狀態
-if 'dash_stat_open' not in st.session_state: st.session_state.dash_stat_open = False
-if 'dash_med_open' not in st.session_state: st.session_state.dash_med_open = False
-if 'meal_stats_open' not in st.session_state: st.session_state.meal_stats_open = False
-if 'just_saved' not in st.session_state: st.session_state.just_saved = False
-if 'just_added' not in st.session_state: st.session_state.just_added = False
-if 'finish_radio' not in st.session_state: st.session_state.finish_radio = "全部吃光 (盤光光)"
-if 'nav_mode' not in st.session_state: st.session_state.nav_mode = "➕ 新增食物/藥品"
-if 'finish_error' not in st.session_state: st.session_state.finish_error = None
+for key in ['dash_stat_open', 'dash_med_open', 'meal_stats_open', 'just_saved', 'just_added', 'finish_radio', 'nav_mode', 'finish_error']:
+    if key not in st.session_state: st.session_state[key] = False if 'open' in key or 'just' in key else ("全部吃光 (盤光光)" if key=='finish_radio' else ("➕ 新增食物/藥品" if key=='nav_mode' else None))
 
-# [修正 2] 捲動邏輯加入 need_scroll 判斷
-scroll_js = """
-<script>
-    function smoothScroll() {
-        var element = window.parent.document.getElementById("input-anchor");
-        if (element) {
-            element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-    }
-    setTimeout(smoothScroll, 500);
-</script>
-"""
-
+# 捲動 JS
+scroll_js = """<script>function smoothScroll() { var element = window.parent.document.getElementById("input-anchor"); if (element) element.scrollIntoView({ behavior: 'smooth', block: 'start' }); } setTimeout(smoothScroll, 500);</script>"""
 if st.session_state.just_saved or st.session_state.just_added or st.session_state.get('need_scroll', False):
     components.html(scroll_js, height=0)
-    st.session_state.just_saved = False
-    st.session_state.just_added = False
-    st.session_state.need_scroll = False # 重置
+    st.session_state.just_saved = st.session_state.just_added = st.session_state.need_scroll = False
 
-# --- 側邊欄 ---
 with st.sidebar:
     st.header("⚙️ 設定")
     tw_now = get_tw_time()
     record_date = st.date_input("📅 日期", tw_now)
     str_date_filter = record_date.strftime("%Y/%m/%d")
-    
-    default_sidebar_time = tw_now.strftime("%H%M")
-    raw_record_time = st.text_input("🕒 時間 (如 0618)", value=default_sidebar_time)
+    raw_record_time = st.text_input("🕒 時間 (如 0618)", value=tw_now.strftime("%H%M"))
     record_time_str = format_time_str(raw_record_time)
-    st.caption(f"將記錄為：{record_time_str}")
-    
-    if st.button("🔄 重新整理數據"):
-        load_data.clear()
-        st.rerun()
+    if st.button("🔄 重新整理數據"): load_data.clear(); st.rerun()
 
-# ----------------------------------------------------
-# 1. 數據準備
-# ----------------------------------------------------
-df_today = pd.DataFrame()
-day_stats = {'cal':0, 'food':0, 'water':0, 'prot':0, 'fat':0}
-meal_stats = {'name': '尚未選擇', 'cal':0, 'food':0, 'water':0, 'prot':0, 'fat':0}
-supp_list = []
-med_list = []
-
+df_today, day_stats, meal_stats, supp_list, med_list = pd.DataFrame(), {'cal':0, 'food':0, 'water':0, 'prot':0, 'fat':0}, {'name': '尚未選擇', 'cal':0, 'food':0, 'water':0, 'prot':0, 'fat':0}, [], []
 if not df_log.empty:
     df_today = df_log[df_log['Date'] == str_date_filter].copy()
     if not df_today.empty:
-        if 'Category' in df_today.columns:
-            df_today['Category'] = df_today['Category'].astype(str).str.strip()
-        
-        for col in ['Cal_Sub', 'Net_Quantity', 'Prot_Sub', 'Fat_Sub']:
-            df_today[col] = pd.to_numeric(df_today[col], errors='coerce').fillna(0)
-        
+        df_today['Category'] = df_today['Category'].astype(str).str.strip()
+        for col in ['Cal_Sub', 'Net_Quantity', 'Prot_Sub', 'Fat_Sub']: df_today[col] = pd.to_numeric(df_today[col], errors='coerce').fillna(0)
         df_today = clean_duplicate_finish_records(df_today)
-        
-        day_food_net, day_water_net = calculate_intake_breakdown(df_today)
-        day_stats['cal'] = df_today['Cal_Sub'].sum()
-        day_stats['food'] = day_food_net
-        day_stats['water'] = day_water_net
-        day_stats['prot'] = df_today['Prot_Sub'].sum()
-        day_stats['fat'] = df_today['Fat_Sub'].sum()
+        f_net, w_net = calculate_intake_breakdown(df_today)
+        day_stats.update({'cal': df_today['Cal_Sub'].sum(), 'food': f_net, 'water': w_net, 'prot': df_today['Prot_Sub'].sum(), 'fat': df_today['Fat_Sub'].sum()})
+        df_supp = df_today[df_today['Category'] == '保養品']
+        if not df_supp.empty: supp_list = [{'name': k, 'count': v} for k, v in df_supp.groupby('Item_Name')['Net_Quantity'].sum().items()]
+        df_med = df_today[df_today['Category'] == '藥品']
+        if not df_med.empty: med_list = [{'name': k, 'count': v} for k, v in df_med.groupby('Item_Name')['Net_Quantity'].sum().items()]
 
-        if 'Category' in df_today.columns:
-            df_supp = df_today[df_today['Category'] == '保養品']
-            if not df_supp.empty:
-                counts = df_supp.groupby('Item_Name')['Net_Quantity'].sum()
-                supp_list = [{'name': k, 'count': v} for k, v in counts.items()]
-            
-            df_med = df_today[df_today['Category'] == '藥品']
-            if not df_med.empty:
-                counts = df_med.groupby('Item_Name')['Net_Quantity'].sum()
-                med_list = [{'name': k, 'count': v} for k, v in counts.items()]
-
-# ----------------------------------------------------
-# 2. 佈局實作
-# ----------------------------------------------------
-date_display = record_date.strftime("%Y年 %m月 %d日")
-st.markdown(render_header(date_display), unsafe_allow_html=True)
-
+st.markdown(render_header(record_date.strftime("%Y年 %m月 %d日")), unsafe_allow_html=True)
 col_dash, col_input = st.columns([4, 3], gap="medium")
 
-# --- 左欄：Dashboard ---
 with col_dash:
     with st.container(border=True):
         st.markdown("#### 📊 本日健康總覽")
-                # [V12.0 新增] 趨勢分析圖表區塊
         with st.expander("📈 飲食趨勢分析", expanded=False):
-            # 1. 快速日期區間
-            range_option = st.radio(
-                "快速區間", 
-                ["近 7 天", "近 30 天", "近 90 天", "自訂"], 
-                horizontal=True,
-                label_visibility="collapsed",
-                key="range_radio"
-            )
-            
+            range_option = st.radio("區間", ["近 7 天", "近 30 天", "近 90 天", "自訂"], horizontal=True, label_visibility="collapsed", key="range_radio")
             today_date = get_tw_time().date()
-            if range_option == "近 7 天":
-                d_start, d_end = today_date - timedelta(days=6), today_date
-            elif range_option == "近 30 天":
-                d_start, d_end = today_date - timedelta(days=29), today_date
-            elif range_option == "近 90 天":
-                d_start, d_end = today_date - timedelta(days=89), today_date
-            else:
-                d_start = today_date - timedelta(days=6)
-                d_end = today_date
-
-            c_date, c_blank = st.columns([2, 1])
-            with c_date:
-                date_range_val = st.date_input("選擇區間", value=(d_start, d_end), max_value=today_date)
-            
+            d_start = today_date - timedelta(days=6 if range_option=="近 7 天" else (29 if range_option=="近 30 天" else 89))
+            date_range_val = st.date_input("選擇區間", value=(d_start, today_date), max_value=today_date)
             if isinstance(date_range_val, tuple) and len(date_range_val) == 2:
                 start_date, end_date = date_range_val
-            else:
-                start_date, end_date = d_start, d_end
-
-            # 2. 資料處理 (ETL)
-            if not df_log.empty:
-                # 複製並轉換日期格式
                 temp_dt = pd.to_datetime(df_log['Date'], format='%Y/%m/%d', errors='coerce')
-                df_valid = df_log[temp_dt.notna()].copy()
-                df_valid['Date_dt'] = temp_dt[temp_dt.notna()].dt.date
-                
-                # 篩選日期區間
-                mask_range = (df_valid['Date_dt'] >= start_date) & (df_valid['Date_dt'] <= end_date)
-                df_trend = df_valid[mask_range].copy()
-                
+                df_valid = df_log[temp_dt.notna()].copy(); df_valid['Date_dt'] = temp_dt[temp_dt.notna()].dt.date
+                df_trend = clean_duplicate_finish_records(df_valid[(df_valid['Date_dt'] >= start_date) & (df_valid['Date_dt'] <= end_date)])
                 if not df_trend.empty:
-                    # 確保數值正確
-                    for c in ['Cal_Sub', 'Net_Quantity', 'Prot_Sub', 'Fat_Sub']:
-                        df_trend[c] = pd.to_numeric(df_trend[c], errors='coerce').fillna(0)
-                    
-                    # 清理重複完食紀錄
-                    df_trend = clean_duplicate_finish_records(df_trend)
-                    daily_groups = df_trend.groupby('Date_dt')
-                    
                     trend_data = []
-                    for d, group in daily_groups:
-                        f_net, w_net = calculate_intake_breakdown(group)
-                        trend_data.append({
-                            'Date': d,
-                            'Calorie': group['Cal_Sub'].sum(),
-                            'Food_g': f_net,
-                            'Water_ml': w_net
-                        })
-                    
+                    for d, group in df_trend.groupby('Date_dt'):
+                        f, w = calculate_intake_breakdown(group)
+                        trend_data.append({'Date': d, 'Calorie': group['Cal_Sub'].sum(), 'Food_g': f, 'Water_ml': w})
                     df_chart = pd.DataFrame(trend_data).sort_values('Date')
-                    
-                    # 計算 7日移動平均 (MA7) - 觀察長期趨勢用
-                    df_chart['Cal_MA7'] = df_chart['Calorie'].rolling(window=7, min_periods=1).mean()
-                    df_chart['Water_MA7'] = df_chart['Water_ml'].rolling(window=7, min_periods=1).mean()
-                    df_chart['Food_MA7'] = df_chart['Food_g'].rolling(window=7, min_periods=1).mean()
-
-                    # 3. 繪製 Plotly 圖表
-                    # 建立雙軸圖表 (左軸: 熱量/食量, 右軸: 水分)
+                    for c in ['Cal', 'Water', 'Food']: df_chart[f'{c}_MA7'] = df_chart['Calorie' if c=='Cal' else f'{c}_g' if c=='Food' else 'Water_ml'].rolling(window=7, min_periods=1).mean()
                     fig = make_subplots(specs=[[{"secondary_y": True}]])
+                    fig.add_trace(go.Bar(x=df_chart['Date'], y=df_chart['Calorie'], name="熱量", marker_color='#FFD700', opacity=0.6, offsetgroup=0), secondary_y=False)
+                    fig.add_trace(go.Bar(x=df_chart['Date'], y=df_chart['Food_g'], name="食量", marker_color='#90EE90', opacity=0.6, offsetgroup=1), secondary_y=False)
+                    fig.add_trace(go.Scatter(x=df_chart['Date'], y=df_chart['Water_ml'], name="飲水", line=dict(color='#00BFFF', width=1, dash='dot')), secondary_y=True)
+                    fig.update_layout(height=500, legend=dict(orientation="h", yanchor="top", y=-0.2, xanchor="center", x=0.5), margin=dict(l=20, r=20, t=20, b=100), hovermode="x unified", barmode='group')
+                    st.markdown(f"##### 📊 飲食趨勢 ({start_date.strftime('%m/%d')} - {end_date.strftime('%m/%d')})")
+                    # [2026 Fix] use_container_width=True -> width="stretch"
+                    st.plotly_chart(fig, width="stretch")
+        with st.expander("📝 今日營養攝取", expanded=st.session_state.dash_stat_open): st.markdown(render_daily_stats_html(day_stats), unsafe_allow_html=True)
+        with st.expander("💊 今日保養與藥品", expanded=st.session_state.dash_med_open): st.markdown(render_supp_med_html(supp_list, med_list), unsafe_allow_html=True)
 
-                    # --- 1. 熱量 (金黃色系) ---
-                    # [Bar] 每日熱量
-                    fig.add_trace(
-                        go.Bar(
-                            x=df_chart['Date'], 
-                            y=df_chart['Calorie'], 
-                            name="熱量 (kcal)",
-                            marker_color='#FFD700', # 金黃色
-                            opacity=0.6,
-                            offsetgroup=0 # 分組設定，讓它跟食量並排
-                        ),
-                        secondary_y=False
-                    )
-                    # [Line] 熱量趨勢
-                    fig.add_trace(
-                        go.Scatter(
-                            x=df_chart['Date'], 
-                            y=df_chart['Cal_MA7'], 
-                            name="熱量 (7日平均)",
-                            line=dict(color='#FF8C00', width=3), # 深橘色
-                            mode='lines'
-                        ),
-                        secondary_y=False
-                    )
-
-                    # --- 2. 食量 (綠色系) ---
-                    # [Bar] 每日食量 (新增)
-                    fig.add_trace(
-                        go.Bar(
-                            x=df_chart['Date'], 
-                            y=df_chart['Food_g'], 
-                            name="食量 (g)",
-                            marker_color='#90EE90', # 淺綠色
-                            opacity=0.6,
-                            offsetgroup=1 # 分組設定，讓它跟熱量並排
-                        ),
-                        secondary_y=False
-                    )
-                    # [Line] 食量趨勢
-                    fig.add_trace(
-                        go.Scatter(
-                            x=df_chart['Date'], 
-                            y=df_chart['Food_MA7'], 
-                            name="食量 (7日平均)",
-                            line=dict(color='#2E8B57', width=2, dash='dash'), # 深綠色虛線
-                            mode='lines'
-                        ),
-                        secondary_y=False
-                    )
-
-                    # --- 3. 飲水 (藍色系，右軸) ---
-                    # [Line] 每日飲水 (點線)
-                    fig.add_trace(
-                        go.Scatter(
-                            x=df_chart['Date'], 
-                            y=df_chart['Water_ml'], 
-                            name="飲水 (ml)",
-                            line=dict(color='#00BFFF', width=1, dash='dot'), 
-                            mode='lines+markers'
-                        ),
-                        secondary_y=True
-                    )
-                    # [Line] 飲水趨勢 (實線)
-                    fig.add_trace(
-                        go.Scatter(
-                            x=df_chart['Date'], 
-                            y=df_chart['Water_MA7'], 
-                            name="飲水 (7日平均)",
-                            line=dict(color='#0000FF', width=2), 
-                            mode='lines'
-                        ),
-                        secondary_y=True
-                    )
-
-                    # 設定圖表版面
-                    fig.update_layout(
-                        # title_text=f"📊 大文的飲食趨勢 ({start_date.strftime('%m/%d')} - {end_date.strftime('%m/%d')})",
-                        # <-- 【刪除】這行，不要在圖表內寫標題
-                        height=550, # 稍微加高一點以免擁擠
-                        legend=dict(orientation="h",   # 水平排列
-                                    yanchor="top", y=-0.15,  # 移到 X 軸下方
-                                    xanchor="center", x=0.5  # 居中對齊
-                                    ),
-                        margin=dict(l=20, r=20, t=20, b=100),# b=100 增加底部邊距，避免圖例被切掉
-                        hovermode="x unified",
-                        barmode='group' # 關鍵設定：讓兩組 Bar 並排顯示而非堆疊
-                    )
-                    
-                    # 設定軸標籤
-                    fig.update_yaxes(title_text="熱量 (kcal) / 食量 (g)", secondary_y=False)
-                    fig.update_yaxes(title_text="飲水 (ml)", secondary_y=True, showgrid=False)
-
-                    # 【新增】 在這裡用 Streamlit 的 Markdown 顯示標題
-                    st.markdown(f"##### 📊 大文的飲食趨勢 ({start_date.strftime('%m/%d')} - {end_date.strftime('%m/%d')})")
-                    
-                    # 渲染圖表
-                    st.plotly_chart(fig, use_container_width=True)
-                    
-                    # 顯示簡易平均
-                    avg_cal = df_chart['Calorie'].mean()
-                    avg_water = df_chart['Water_ml'].mean()
-                    avg_food = df_chart['Food_g'].mean()
-                    st.info(f"📅 區間平均：熱量 **{avg_cal:.0f}** kcal | 食量 **{avg_food:.0f}** g | 飲水 **{avg_water:.0f}** ml")
-                else:
-                    st.info("⚠️ 此日期區間無資料")
-            else:
-                st.info("尚無任何紀錄")
-        with st.expander("📝 今日營養攝取", expanded=st.session_state.dash_stat_open):
-             st.markdown(render_daily_stats_html(day_stats), unsafe_allow_html=True)
-        with st.expander("💊 今日保養與藥品服用", expanded=st.session_state.dash_med_open):
-             st.markdown(render_supp_med_html(supp_list, med_list), unsafe_allow_html=True)
-        
-
-
-# --- 右欄：操作區 ---
 with col_input:
-   
-    # 1. 定義餐別清單
-    meal_options = ["第一餐", "第二餐", "第三餐", "第四餐", "第五餐", 
-                    "第六餐", "第七餐", "第八餐", "第九餐", "第十餐", "點心1", "點心2"]
-
-    # 2. 準備餐別狀態資料
-    meal_status_map = {}
-    recorded_meals_list = []
-
+    meal_options = ["第一餐", "第二餐", "第三餐", "第四餐", "第五餐", "第六餐", "第七餐", "第八餐", "第九餐", "第十餐", "點心1", "點心2"]
+    meal_status_map = {m: " (已記)" for m in (df_today['Meal_Name'].unique() if not df_today.empty else [])}
     if not df_today.empty:
-        # A. 找出所有已記錄的餐
-        recorded_meals_list = df_today['Meal_Name'].unique().tolist()
-
-        # B. 標記「已記」
-        for m in recorded_meals_list:
-            # [修正] 這裡必須指定 key [m]，不能直接寫 meal_status_map = ...，否則字典會變字串
-            meal_status_map[m] = " (已記)"
-        
-        # C. 標記「完食」並加上時間
-        mask_finish = df_today['ItemID'].isin(['FINISH', 'WASTE'])
-        df_finished = df_today[mask_finish]
-
-        for _, row in df_finished.iterrows():
-            m_name = row['Meal_Name']
-            # 取時間的前5碼 (例如 12:51:00 -> 12:51)
-            t_str = str(row['Time'])[:5]
-            # [修正] 補上漏掉的右括號 )
-            meal_status_map[m_name] = f" (已記) (完食: {t_str})"
-
-    # 3. 自動跳到下一餐邏輯
-    default_meal_name = meal_options[0]
-    for m in meal_options:
-        # 如果這一餐還沒有出現在紀錄中，就預設選它
-        if m not in recorded_meals_list:
-            default_meal_name = m
-            break
-
-    # 初始化 session_state        
+        for _, row in df_today[df_today['ItemID'].isin(['FINISH', 'WASTE'])].iterrows(): meal_status_map[row['Meal_Name']] = f" (已記) (完食: {str(row['Time'])[:5]})"
     if 'meal_selector' not in st.session_state:
-        st.session_state.meal_selector = default_meal_name
-
-    # --- UI 顯示區 ---
+        st.session_state.meal_selector = next((m for m in meal_options if m not in (df_today['Meal_Name'].unique() if not df_today.empty else [])), meal_options[0])
+    
     with st.container(border=True):
-        st.markdown("#### 🍽️ 本日飲食紀錄")
-        
+        st.markdown("#### 🍽️ 飲食紀錄")
         c_meal, c_bowl = st.columns(2)
-        with c_meal:
-            # 4. 定義顯示格式函式
-            def meal_formatter(m):
-                # 去查表，如果這餐有狀態文字就加上去，沒有就回傳原本的餐名
-                suffix = meal_status_map.get(m, "")
-                return f"{m}{suffix}"
-            
-            # 5. 建立下拉選單
-            meal_name = st.selectbox(
-                "餐別", 
-                meal_options,
-                format_func=meal_formatter,
-                key="meal_selector",
-                on_change=reset_meal_inputs
-            )
-        
-        # [邏輯保留] 為了讓下方 c_bowl (未顯示在截圖中) 能讀到 last_bowl，這段放在這裡
-        last_bowl = 30.0
-        df_meal = pd.DataFrame()
-        if not df_today.empty:
-            mask_meal = (df_today['Meal_Name'] == meal_name)
-            df_meal = df_today[mask_meal]
-            if not df_meal.empty:
-                try:
-                    last_bowl = float(df_meal.iloc[-1]['Bowl_Weight'])
-                except: 
-                    pass
-        
-        with c_bowl:
-            bowl_weight = st.number_input("🥣 碗重 (g)", value=last_bowl, step=0.1, format="%.1f")
-
+        meal_name = c_meal.selectbox("餐別", meal_options, format_func=lambda m: f"{m}{meal_status_map.get(m, '')}", key="meal_selector", on_change=reset_meal_inputs)
+        df_meal = df_today[df_today['Meal_Name'] == meal_name] if not df_today.empty else pd.DataFrame()
+        bowl_weight = c_bowl.number_input("🥣 碗重 (g)", value=float(df_meal.iloc[-1]['Bowl_Weight']) if not df_meal.empty else 30.0, step=0.1, format="%.1f")
         if not df_meal.empty:
-            with st.expander(f"📜 查看 {meal_name} 已記錄明細"):
+            with st.expander(f"📜 {meal_name} 明細"):
                 view_df = df_meal[['Item_Name', 'Net_Quantity', 'Cal_Sub', 'Time']].copy()
-                def append_time_to_finish(row):
-                    if '完食' in str(row['Item_Name']):
-                        time_str = str(row['Time'])[:5]
-                        return f"{row['Item_Name']} {time_str}"
-                    return row['Item_Name']
-                view_df['Item_Name'] = view_df.apply(append_time_to_finish, axis=1)
-                view_df = view_df.drop(columns=['Time'])
-                view_df.columns = ['品名', '數量', '熱量']
-                st.dataframe(view_df, use_container_width=True, hide_index=True)
-
-        meal_stats['name'] = meal_name
+                view_df['Item_Name'] = view_df.apply(lambda r: f"{r['Item_Name']} {str(r['Time'])[:5]}" if '完食' in str(r['Item_Name']) else r['Item_Name'], axis=1)
+                # [2026 Fix] use_container_width=True -> width="stretch"
+                st.dataframe(view_df.drop(columns=['Time']), width="stretch", hide_index=True)
+        meal_stats.update({'name': meal_name})
         if not df_meal.empty:
-            for col in ['Cal_Sub', 'Net_Quantity', 'Prot_Sub', 'Fat_Sub']:
-                df_meal[col] = pd.to_numeric(df_meal[col], errors='coerce').fillna(0)
-            df_meal_clean = clean_duplicate_finish_records(df_meal)
-            m_food, m_water = calculate_intake_breakdown(df_meal_clean)
-            meal_stats['food'] = m_food
-            meal_stats['water'] = m_water
-            meal_stats['cal'] = df_meal_clean['Cal_Sub'].sum()
-            meal_stats['prot'] = df_meal_clean['Prot_Sub'].sum()
-            meal_stats['fat'] = df_meal_clean['Fat_Sub'].sum()
-        
-        with st.expander("📊 本餐營養小計", expanded=st.session_state.meal_stats_open):
-            st.markdown(render_meal_stats_simple(meal_stats), unsafe_allow_html=True)
-
+            df_m_c = clean_duplicate_finish_records(df_meal)
+            fm, wm = calculate_intake_breakdown(df_m_c)
+            meal_stats.update({'food': fm, 'water': wm, 'cal': df_m_c['Cal_Sub'].sum(), 'prot': df_m_c['Prot_Sub'].sum(), 'fat': df_m_c['Fat_Sub'].sum()})
+        with st.expander("📊 本餐小計", expanded=st.session_state.meal_stats_open): st.markdown(render_meal_stats_simple(meal_stats), unsafe_allow_html=True)
         st.divider()
-
         st.markdown('<div id="input-anchor" style="height:0px; margin-top:-10px;"></div>', unsafe_allow_html=True)
-
-        nav_mode = st.radio(
-            "操作模式", 
-            ["➕ 新增食物/藥品", "🏁 完食/紀錄剩餘"], 
-            horizontal=True,
-            label_visibility="collapsed",
-            key="nav_mode"
-        )
-
+        nav_mode = st.radio("模式", ["➕ 新增食物/藥品", "🏁 完食/紀錄剩餘"], horizontal=True, label_visibility="collapsed", key="nav_mode")
         if 'cart' not in st.session_state: st.session_state.cart = []
-        
-        last_reading_db = bowl_weight
-        last_item_db = "碗"
-        if not df_meal.empty:
-            try:
-                df_food_only = df_meal[~df_meal['ItemID'].isin(['WASTE', 'FINISH'])]
-                if not df_food_only.empty:
-                    last_reading_db = float(df_food_only.iloc[-1]['Scale_Reading'])
-                    last_item_db = df_food_only.iloc[-1]['Item_Name']
-            except: pass
-        
-        if len(st.session_state.cart) > 0:
-            last_ref_weight = st.session_state.cart[-1]['Scale_Reading']
-            last_ref_name = st.session_state.cart[-1]['Item_Name']
-        else:
-            last_ref_weight = last_reading_db
-            last_ref_name = last_item_db
+        last_ref_w = st.session_state.cart[-1]['Scale_Reading'] if st.session_state.cart else (float(df_meal[~df_meal['ItemID'].isin(['WASTE', 'FINISH'])].iloc[-1]['Scale_Reading']) if not df_meal.empty and not df_meal[~df_meal['ItemID'].isin(['WASTE', 'FINISH'])].empty else bowl_weight)
+        last_ref_n = st.session_state.cart[-1]['Item_Name'] if st.session_state.cart else (df_meal[~df_meal['ItemID'].isin(['WASTE', 'FINISH'])].iloc[-1]['Item_Name'] if not df_meal.empty and not df_meal[~df_meal['ItemID'].isin(['WASTE', 'FINISH'])].empty else "碗")
 
-        # --- 模式 1: 新增 ---
         if nav_mode == "➕ 新增食物/藥品":
-            st.markdown(f"##### 🍽️ 編輯：{meal_name}")
-            
             with st.container(border=True):
                 c1, c2 = st.columns(2)
-                with c1:
-                    unique_cats = ["請選擇..."] + list(df_items['Category'].unique())
-                    filter_cat = st.selectbox("1. 類別", unique_cats, key="cat_select", on_change=on_cat_change)
-                    
-                    filtered_items = []
-                    if filter_cat != "請選擇...":
-                         filtered_items = df_items[df_items['Category'] == filter_cat]['Item_Name'].tolist()
-
-                with c2:
-                    item_name = st.selectbox("2. 品名", filtered_items if filtered_items else ["請先選類別"], key="item_select", on_change=on_item_change)
-
-                unit = unit_map.get(item_name, "g")
-                
+                f_cat = c1.selectbox("1. 類別", ["請選擇..."] + list(df_items['Category'].unique()), key="cat_select", on_change=on_cat_change)
+                i_name = c2.selectbox("2. 品名", df_items[df_items['Category'] == f_cat]['Item_Name'].tolist() if f_cat != "請選擇..." else ["請先選類別"], key="item_select", on_change=on_item_change)
+                unit = unit_map.get(i_name, "g")
                 c3, c4 = st.columns(2)
-                with c3:
-                    if 'scale_val' not in st.session_state: st.session_state.scale_val = None
-                    
-                    if unit in ["顆", "粒", "錠", "膠囊", "次"]:
-                        scale_reading_ui = st.number_input(f"3. 數量 ({unit})", step=1.0, key="scale_val", value=None, placeholder="輸入數量")
-                        is_zeroed_ui = True 
-                    else:
-                        scale_reading_ui = st.number_input("3. 秤重讀數 (g)", step=0.1, format="%.1f", key="scale_val", value=None, placeholder="輸入重量")
-                        st.caption(f"前筆: {last_ref_weight} g ({last_ref_name})")
-                        is_zeroed_ui = st.checkbox("⚖️ 已歸零 / 單獨秤重", value=False, key="check_zero")
-
-                with c4:
-                    net_weight_disp = 0.0
-                    calc_msg_disp = "請輸入"
-                    scale_val = safe_float(scale_reading_ui)
-                    
-                    if scale_val > 0:
-                        if unit in ["顆", "粒", "錠", "膠囊", "次"]:
-                            net_weight_disp = scale_val
-                            calc_msg_disp = f"單位: {unit}"
-                        else:
-                            if is_zeroed_ui:
-                                net_weight_disp = scale_val
-                                calc_msg_disp = "單獨秤重"
-                            else:
-                                if scale_val < last_ref_weight:
-                                    calc_msg_disp = "⚠️ 數值異常"
-                                    net_weight_disp = 0.0
-                                else:
-                                    net_weight_disp = scale_val - last_ref_weight
-                                    calc_msg_disp = f"扣除前筆 {last_ref_weight}"
-                    
-                    if "異常" in calc_msg_disp:
-                        st.metric("淨重", "---", delta=calc_msg_disp, delta_color="inverse")
-                    else:
-                        st.metric("淨重", f"{net_weight_disp:.1f}", delta=calc_msg_disp, delta_color="off")
-
-                btn_disabled = False
-                if filter_cat == "請選擇..." or item_name == "請先選類別": btn_disabled = True
-                if scale_val <= 0: btn_disabled = True
-                if "異常" in calc_msg_disp: btn_disabled = True 
-
-                st.button("⬇️ 加入清單", 
-                          type="secondary", 
-                          use_container_width=True, 
-                          disabled=btn_disabled,
-                          on_click=add_to_cart_callback,
-                          args=(bowl_weight, last_ref_weight, last_ref_name)
-                )
-
+                sc_ui = c3.number_input(f"3. 讀數 ({unit})" if unit != "g" else "3. 秤重讀數 (g)", step=1.0 if unit != "g" else 0.1, format=None if unit != "g" else "%.1f", key="scale_val", value=None, placeholder="輸入")
+                is_z = c3.checkbox("⚖️ 已歸零 / 單獨秤重", value=False, key="check_zero") if unit == "g" else True
+                sc_val = safe_float(sc_ui)
+                nw, msg = (sc_val, f"單位: {unit}") if unit != "g" else ((sc_val, "單獨秤重") if is_z else ((0.0, "⚠️ 異常") if sc_val < last_ref_w else (sc_val - last_ref_w, f"扣除前筆 {last_ref_w}")))
+                c4.metric("淨重", f"{nw:.1f}", delta=msg, delta_color="inverse" if "異常" in msg else "off")
+                # [2026 Fix] use_container_width=True -> width="stretch"
+                st.button("⬇️ 加入清單", type="secondary", width="stretch", disabled=(f_cat=="請選擇..." or i_name=="請先選類別" or sc_val<=0 or "異常" in msg), on_click=add_to_cart_callback, args=(bowl_weight, last_ref_w, last_ref_n))
             if st.session_state.cart:
-                st.markdown("---")
-                st.markdown("##### 🛒 待存清單 (可編輯)")
-                df_cart = pd.DataFrame(st.session_state.cart)
-                
-                edited_df = st.data_editor(
-                    df_cart,
-                    use_container_width=True,
-                    column_config={
-                        "Item_Name": "品名",
-                        "Net_Quantity": st.column_config.NumberColumn("數量/淨重", format="%.1f"),
-                        "Cal_Sub": st.column_config.NumberColumn("熱量", format="%.1f")
-                    },
-                    column_order=["Item_Name", "Net_Quantity", "Cal_Sub"],
-                    num_rows="fixed", 
-                    key="cart_editor"
-                )
-                
-                edited_df = edited_df.dropna(subset=['Item_Name'])
-                edited_df = edited_df[edited_df['Item_Name'] != ""]
+                # [2026 Fix] use_container_width=True -> width="stretch"
+                ed_df = st.data_editor(pd.DataFrame(st.session_state.cart), width="stretch", column_config={"Item_Name": "品名", "Net_Quantity": st.column_config.NumberColumn("淨重", format="%.1f"), "Cal_Sub": st.column_config.NumberColumn("熱量", format="%.1f")}, column_order=["Item_Name", "Net_Quantity", "Cal_Sub"], num_rows="fixed", key="cart_editor").dropna(subset=['Item_Name'])
+                if not ed_df.empty:
+                    f_sum = ed_df[~ed_df['Category'].isin(['藥品', '保養品'])]['Net_Quantity'].sum() if 'Category' in ed_df.columns else ed_df['Net_Quantity'].sum()
+                    st.info(f"∑ 總計 (不含藥)：{f_sum:.1f} g | 🔥 {ed_df['Cal_Sub'].sum():.1f} kcal")
+                del_i = st.selectbox("🗑️ 刪除", ["請選擇..."] + [f"{i+1}. {r['Item_Name']}({r['Net_Quantity']}g)" for i, r in ed_df.iterrows()])
+                if del_i != "請選擇..." and st.button("確認刪除"): st.session_state.cart.pop(int(del_i.split(".")[0])-1); st.rerun()
+                # [2026 Fix] use_container_width=True -> width="stretch"
+                if st.button("💾 儲存寫入 Google Sheet", type="primary", width="stretch", on_click=lock_meal_state):
+                    rows = [[str(uuid.uuid4()), f"{str_date_filter} {record_time_str}:00", str_date_filter, f"{record_time_str}:00", meal_name, r.get('ItemID',''), r.get('Category',''), r.get('Scale_Reading',0), r.get('Bowl_Weight',0), safe_float(r['Net_Quantity']), safe_float(r['Cal_Sub']), r.get('Prot_Sub',0), r.get('Fat_Sub',0), r.get('Phos_Sub',0), "", r['Item_Name'], ""] for _, r in ed_df.iterrows()]
+                    try: sheet_log.append_rows(rows); st.toast("✅ 寫入成功"); st.session_state.cart, st.session_state.just_saved = [], True; load_data.clear(); st.rerun()
+                    except Exception as e: st.error(f"錯誤：{e}")
 
-                 # ==========================================
-                # [修正] 補回這裡的總計計算功能
-                if not edited_df.empty:
-                    try:
-                        edited_df['Net_Quantity'] = pd.to_numeric(edited_df['Net_Quantity'], errors='coerce').fillna(0)
-                        edited_df['Cal_Sub'] = pd.to_numeric(edited_df['Cal_Sub'], errors='coerce').fillna(0)
-                        
-                        if 'Category' in edited_df.columns:
-                            mask_food = ~edited_df['Category'].isin(['藥品', '保養品'])
-                            live_sum_net = edited_df.loc[mask_food, 'Net_Quantity'].sum()
-                        else:
-                            live_sum_net = edited_df['Net_Quantity'].sum()
-                            
-                        live_sum_cal = edited_df['Cal_Sub'].sum()
-                        st.info(f"∑ 總計 (不含藥)：{live_sum_net:.1f} g  |  🔥 {live_sum_cal:.1f} kcal")
-                    except: pass
-                # ==========================================
-
-
-                delete_options = ["請選擇要刪除的項目..."] + [f"{i+1}. {row['Item_Name']} ({row['Net_Quantity']}g)" for i, row in edited_df.iterrows()]
-                del_item = st.selectbox("🗑️ 刪除項目 (行動版專用)", delete_options)
-                
-                if del_item != "請選擇要刪除的項目..." and st.button("確認刪除", type="secondary"):
-                    try:
-                        idx_to_del = int(del_item.split(".")[0]) - 1
-                        if 0 <= idx_to_del < len(st.session_state.cart):
-                            st.session_state.cart.pop(idx_to_del)
-                            st.rerun()
-                    except:
-                        st.error("刪除失敗，請重新整理頁面")
-
-                if st.button("💾 儲存寫入 Google Sheet", type="primary", use_container_width=True, on_click=lock_meal_state):
-                    if edited_df.empty:
-                        st.warning("清單為空或資料不完整")
-                    else:
-                        with st.spinner("寫入中..."):
-                            rows = []
-                            str_date = record_date.strftime("%Y/%m/%d")
-                            str_time = f"{record_time_str}:00"
-                            timestamp = f"{str_date} {str_time}"
-
-                            for i, row_data in edited_df.iterrows():
-                                orig_item = next((x for x in st.session_state.cart if x['Item_Name'] == row_data['Item_Name']), {})
-                                safe_net = safe_float(row_data['Net_Quantity'])
-                                safe_cal = safe_float(row_data['Cal_Sub'])
-
-                                row = [
-                                    str(uuid.uuid4()), timestamp, str_date, str_time, meal_name,
-                                    orig_item.get('ItemID', ''), orig_item.get('Category', ''), 
-                                    orig_item.get('Scale_Reading', 0), orig_item.get('Bowl_Weight', 0), 
-                                    safe_net, safe_cal,
-                                    orig_item.get('Prot_Sub', 0), orig_item.get('Fat_Sub', 0), 
-                                    orig_item.get('Phos_Sub', 0), "", row_data['Item_Name'], ""
-                                ]
-                                rows.append(row)
-                            try:
-                                sheet_log.append_rows(rows)
-                                st.toast("✅ 寫入成功！")
-                                st.session_state.cart = []
-                                st.session_state.dash_stat_open = False
-                                st.session_state.dash_med_open = False
-                                st.session_state.meal_stats_open = False
-                                load_data.clear()
-                                st.session_state.just_saved = True 
-                                st.rerun()
-                            except Exception as e:
-                                st.error(f"寫入失敗：{e}")
-
-        # --- 模式 2: 完食 ---
         elif nav_mode == "🏁 完食/紀錄剩餘":
-            st.markdown(f"##### 🍽️ 編輯：{meal_name}")
-            st.caption("紀錄完食時間，若有剩餘，請將剩食倒入新容器(或原碗)秤重")
-            
-            finish_date = st.date_input("完食日期 (跨日請選實際日期)", value=record_date, key="finish_date_picker")
-            default_now = get_tw_time().strftime("%H%M")
-            raw_finish_time = st.text_input("完食時間 (如 0200)", value=default_now, key="finish_time_input")
-            fmt_finish_time = format_time_str(raw_finish_time)
-            
-            if finish_date != record_date:
-                st.info(f"💡 此紀錄將歸屬在 **{record_date.strftime('%m/%d')}** 的 {meal_name}，但時間標記為 **{finish_date.strftime('%m/%d')} {fmt_finish_time}**")
-            else:
-                st.caption(f"📝 將記錄為：{fmt_finish_time}")
-
-            finish_type = st.radio("狀態", ["全部吃光 (盤光光)", "有剩餘 (需秤重)"], horizontal=True, key="finish_radio")
-            waste_net = 0.0
-            waste_cal = 0.0
-            
-            if finish_type == "有剩餘 (需秤重)":
-                st.markdown("---")
-                c_w1, c_w2 = st.columns(2)
-                with c_w1:
-                    waste_gross = st.number_input("1. 容器+剩食 總重 (g)", min_value=0.0, step=0.1, key="waste_gross", value=None, placeholder="輸入總重")
-                with c_w2:
-                    waste_tare = st.number_input("2. 容器空重 (g)", min_value=0.0, step=0.1, key="waste_tare", value=None, placeholder="輸入空重")
-                val_gross = safe_float(waste_gross)
-                val_tare = safe_float(waste_tare)
-                waste_net = val_gross - val_tare
-                
-                if waste_gross is not None and waste_tare is not None:
-                    if waste_net > 0:
-                        st.warning(f"📉 實際剩餘淨重：{waste_net:.1f} g")
-                        if not df_meal.empty:
-                            df_meal_clean = clean_duplicate_finish_records(df_meal)
-                            meal_foods = df_meal_clean[df_meal_clean['Net_Quantity'].apply(lambda x: safe_float(x)) > 0]
-                            exclude_meds = ['藥品', '保養品']
-                            if 'Category' in meal_foods.columns:
-                                meal_foods['Category'] = meal_foods['Category'].astype(str).str.strip()
-                                calc_df = meal_foods[~meal_foods['Category'].isin(exclude_meds)]
-                                total_in_cal = calc_df['Cal_Sub'].apply(safe_float).sum()
-                                total_in_weight = calc_df['Net_Quantity'].apply(safe_float).sum()
-                                if total_in_weight > 0:
-                                    avg_density = total_in_cal / total_in_weight
-                                    waste_cal = waste_net * avg_density
-                                    st.caption(f"預估扣除熱量：{waste_cal:.1f} kcal")
-                    elif val_gross > 0 and waste_net <= 0:
-                        st.error("空重不能大於總重！")
-
-            st.button("💾 記錄完食/剩餘", type="primary", on_click=save_finish_callback, args=(finish_type, waste_net, waste_cal, bowl_weight, meal_name, fmt_finish_time, finish_date, record_date))
+            f_date = st.date_input("完食日期", value=record_date); f_time = format_time_str(st.text_input("完食時間", value=get_tw_time().strftime("%H%M")))
+            f_type = st.radio("狀態", ["全部吃光 (盤光光)", "有剩餘 (需秤重)"], horizontal=True, key="finish_radio")
+            wn, wc = 0.0, 0.0
+            if f_type == "有剩餘 (需秤重)":
+                cw1, cw2 = st.columns(2)
+                vg, vt = safe_float(cw1.number_input("總重", value=None)), safe_float(cw2.number_input("容器重", value=None))
+                wn = vg - vt
+                if wn > 0 and not df_meal.empty:
+                    calc_df = df_meal[~df_meal['Category'].isin(['藥品', '保養品']) & (df_meal['Net_Quantity'] > 0)]
+                    if not calc_df.empty: wc = wn * (calc_df['Cal_Sub'].sum() / calc_df['Net_Quantity'].sum()); st.warning(f"📉 剩餘：{wn:.1f}g (約扣除 {wc:.1f}kcal)")
+            st.button("💾 記錄完食", type="primary", on_click=save_finish_callback, args=(f_type, wn, wc, bowl_weight, meal_name, f_time, f_date, record_date))
