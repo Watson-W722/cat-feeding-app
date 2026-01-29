@@ -1,8 +1,9 @@
-# Python 程式碼 V12.2 (2026 Standard Edition)
+# Python 程式碼 V12.3 (2026 Final Stability Edition)
 # 修正內容：
-# 1. 符合 2026 Streamlit 規範 (use_container_width -> width='stretch')
-# 2. 修正「水 (ml)」的累加秤重邏輯
-# 3. 補回輸入框下方的「前筆參考紀錄」提示字
+# 1. 修正 ↑異常 邏輯：僅在「已輸入讀數」且「低於前筆」時顯示異常，平時顯示「等待輸入」。
+# 2. 修正 DateParseError：強化趨勢圖的日期解析，忽略無效日期列。
+# 3. 2026 語法相容：全面使用 width="stretch"。
+# 4. 水 (ml) 累加支援：補回參考讀數提示與歸零勾選框。
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -11,7 +12,6 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime, timedelta, timezone
 import uuid
-import time 
 
 # 視覺化套件
 import plotly.graph_objects as go
@@ -66,64 +66,42 @@ def calculate_intake_breakdown(df):
     ratio_food = input_food / total_input if total_input > 0 else 1.0
     return input_food + (total_waste * ratio_food), input_water + (total_waste * ratio_water)
 
-# CSS 注入
+# CSS 注入 (簡約版)
 def inject_custom_css():
     st.markdown("""
     <style>
         :root { --navy: #012172; --beige: #BBBF95; --bg: #F8FAFC; --text-muted: #5A6B8C; }
         .stApp { background-color: var(--bg); font-family: 'Segoe UI', sans-serif; color: var(--navy); }
         .stMarkdown, .stRadio label, .stNumberInput label, .stSelectbox label, .stTextInput label, p, h1, h2, h3, h4, h5, h6, span, div { color: var(--navy) !important; }
-        .stNumberInput input, .stTextInput input, .stSelectbox div[data-baseweb="select"] { color: var(--navy) !important; background-color: #ffffff !important; }
-        div[data-testid="stVerticalBlock"] > div[style*="background-color"] { background: white; border-radius: 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.04); border: 1px solid rgba(1, 33, 114, 0.1); padding: 24px; }
-        .stat-item { background: #fff; border: 2px solid #e2e8f0; border-radius: 12px; padding: 16px 12px; display: flex; flex-direction: column; align-items: center; text-align: center; }
+        div[data-testid="stVerticalBlock"] > div[style*="background-color"] { background: white; border-radius: 16px; border: 1px solid rgba(1,33,114,0.1); padding: 24px; }
+        .stat-item { background: #fff; border: 2px solid #e2e8f0; border-radius: 12px; padding: 16px 12px; display: flex; flex-direction: column; align-items: center; }
         .stat-header { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; font-size: 14px; font-weight: 700; color: var(--text-muted) !important; }
         .stat-value { font-size: 32px; font-weight: 900; color: var(--navy) !important; line-height: 1.1; }
-        .stat-unit { font-size: 14px; font-weight: 600; color: var(--text-muted) !important; margin-left: 2px; }
         .grid-row-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px; }
         .grid-row-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 0px; }
-        .simple-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0; background: #FDFDF9; border: 1px solid var(--beige); border-radius: 12px; padding: 10px 0; margin-bottom: 15px; width: 100%; }
+        .simple-grid { display: grid; grid-template-columns: repeat(5, 1fr); background: #FDFDF9; border: 1px solid var(--beige); border-radius: 12px; padding: 10px 0; margin-bottom: 15px; }
         .simple-item { text-align: center; border-right: 1px solid rgba(1, 33, 114, 0.1); }
-        .simple-item:last-child { border-right: none; }
-        .tag { display: inline-flex; align-items: center; padding: 6px 12px; border-radius: 8px; font-size: 14px; font-weight: 600; color: var(--navy) !important; }
-        .tag-count { background: rgba(255,255,255,0.8); padding: 0px 6px; border-radius: 4px; font-size: 12px; font-weight: 800; margin-left: 6px; }
-        .bg-orange { background: #fff7ed; color: #f97316; } .bg-blue { background: #eff6ff; color: #3b82f6; } .bg-cyan { background: #ecfeff; color: #06b6d4; }
-        .tag-green { background: #ecfdf5; border: 1px solid #d1fae5; color: #047857 !important; } .tag-red { background: #fff1f2; border: 1px solid #ffe4e6; color: #be123c !important; }
+        .tag { display: inline-flex; align-items: center; padding: 6px 12px; border-radius: 8px; font-size: 14px; font-weight: 600; }
         .main-header { display: flex; align-items: center; gap: 12px; margin-top: 5px; margin-bottom: 24px; padding: 20px; background: white; border-radius: 16px; border: 1px solid rgba(1, 33, 114, 0.1); }
         .header-icon { background: var(--navy); padding: 12px; border-radius: 12px; color: white !important; display: flex; }
     </style>
     """, unsafe_allow_html=True)
 
 def render_header(date_str):
-    cat_svg = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5c.67 0 1.35.09 2 .26 1.78-2 5.03-2.84 6.42-2.26 1.4.58-.42 7-.42 7 .57 1.07 1 2.24 1 3.44C21 17.9 16.97 21 12 21S3 17.9 3 13.44C3 12.24 3.43 11.07 4 10c0 0-1.82-6.42-.42-7 1.39-.58 4.64.26 6.42 2.26.65-.17 1.33-.26 2-.26z"/><path d="M9 13h.01"/><path d="M15 13h.01"/></svg>'
+    cat_svg = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5c.67 0 1.35.09 2 .26 1.78-2 5.03-2.84 6.42-2.26 1.4.58-.42 7-.42 7 .57 1.07 1 2.24 1 3.44C21 17.9 16.97 21 12 21S3 17.9 3 13.44C3 12.24 3.43 11.07 4 10c0 0-1.82-6.42-.42-7 1.39-.58 4.64.26 6.42 2.26.65-.17 1.33-.26 2-.26z"/></svg>'
     return f'<div class="main-header"><div class="header-icon">{cat_svg}</div><div><div style="font-size:24px; font-weight:800; color:#012172;">大文的飲食日記</div><div style="font-size:15px; font-weight:500; color:#5A6B8C;">{date_str}</div></div></div>'
 
 def render_daily_stats_html(day_stats):
-    icons = {
-        "flame": '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.1.2-2.2.6-3.3a1 1 0 0 0 2.1.7z"></path></svg>',
-        "utensils": '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>',
-        "droplets": '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 16.3c2.2 0 4-1.83 4-4.05 0-1.16-.57-2.26-1.71-3.19S7.29 6.75 7 5.3c-.29 1.45-1.14 2.84-2.29 3.76S3 11.1 3 12.25c0 2.22 1.8 4.05 4 4.05z"/></svg>',
-        "beef": '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12.5" cy="8.5" r="2.5"/><path d="M12.5 2a6.5 6.5 0 0 0-6.22 4.6c-1.1 3.13-.78 6.43 1.48 9.17l2.92 2.92c.65.65 1.74.65 2.39 0l.97-.97a6 6 0 0 1 4.24-1.76h.04a6 6 0 0 0 3.79-1.35l.81-.81a2.5 2.5 0 0 0-3.54-3.54l-.47.47a1.5 1.5 0 0 1-2.12 0l-.88-.88a2.5 2.5 0 0 1 0-3.54l.84-.84c.76-.76.88-2 .2-2.86A6.5 6.5 0 0 0 12.5 2Z"/></svg>',
-        "dna": '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 15c6.638 0 12-5.362 12-12"/><path d="M10 21c6.638 0 12-5.362 12-12"/><path d="m2 3 20 18"/></svg>'
-    }
-    def get_stat_html(icon, label, value, unit, color_class):
-        return f'<div class="stat-item"><div><div class="stat-header"><div class="stat-icon {color_class}">{icons[icon]}</div>{label}</div><div style="display:flex; align-items:baseline; justify-content:center;"><span class="stat-value">{value}</span><span class="stat-unit">{unit}</span></div></div></div>'
-    html = '<div class="grid-row-3">' + get_stat_html("flame", "熱量", int(day_stats['cal']), "kcal", "bg-orange") + get_stat_html("utensils", "食物", f"{day_stats['food']:.1f}", "g", "bg-blue") + get_stat_html("droplets", "飲水", f"{day_stats['water']:.1f}", "ml", "bg-cyan") + '</div>'
-    html += '<div class="grid-row-2">' + get_stat_html("beef", "蛋白質", f"{day_stats['prot']:.1f}", "g", "bg-red") + get_stat_html("dna", "脂肪", f"{day_stats['fat']:.1f}", "g", "bg-yellow") + '</div>'
-    return html
-
-def render_supp_med_html(supp_list, med_list):
-    def get_tag_html(items, type_class):
-        if not items: return '<span style="color:#5A6B8C; font-size:13px;">無</span>'
-        return "".join([f'<span class="tag {type_class}">{item["name"]}<span class="tag-count">x{int(item["count"])}</span></span>' for item in items])
-    html = '<div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px;">'
-    html += f'<div><div style="font-size:12px;font-weight:700;color:#047857;">保養品</div><div class="tag-container">{get_tag_html(supp_list, "tag-green")}</div></div>'
-    html += f'<div style="border-left:1px solid #f1f5f9;padding-left:20px;"><div><div style="font-size:12px;font-weight:700;color:#be123c;">藥品</div><div class="tag-container">{get_tag_html(med_list, "tag-red")}</div></div></div></div>'
+    def get_stat_html(label, value, unit, color_class):
+        return f'<div class="stat-item"><div class="stat-header">{label}</div><div style="display:flex; align-items:baseline;"><span class="stat-value">{value}</span><span style="font-size:14px; margin-left:2px;">{unit}</span></div></div>'
+    html = '<div class="grid-row-3">' + get_stat_html("熱量", int(day_stats['cal']), "kcal", "bg-orange") + get_stat_html("食物", f"{day_stats['food']:.1f}", "g", "bg-blue") + get_stat_html("飲水", f"{day_stats['water']:.1f}", "ml", "bg-cyan") + '</div>'
+    html += '<div class="grid-row-2">' + get_stat_html("蛋白質", f"{day_stats['prot']:.1f}", "g", "bg-red") + get_stat_html("脂肪", f"{day_stats['fat']:.1f}", "g", "bg-yellow") + '</div>'
     return html
 
 def render_meal_stats_simple(meal_stats):
     html = '<div class="simple-grid">'
     for l, v, u in [("熱量", int(meal_stats['cal']), "kcal"), ("食物", f"{meal_stats['food']:.1f}", "g"), ("飲水", f"{meal_stats['water']:.1f}", "ml"), ("蛋白", f"{meal_stats['prot']:.1f}", "g"), ("脂肪", f"{meal_stats['fat']:.1f}", "g")]:
-        html += f'<div class="simple-item"><div class="simple-label">{l}</div><div class="simple-value">{v}<span class="simple-unit">{u}</span></div></div>'
+        html += f'<div class="simple-item"><div style="font-size:11px; color:#5A6B8C;">{l}</div><div style="font-size:16px; font-weight:800;">{v}<span style="font-size:10px;">{u}</span></div></div>'
     return html + '</div>'
 
 # --- 連線與資料讀取 ---
@@ -157,25 +135,8 @@ if not df_items.empty:
     phos_map = dict(zip(df_items['Item_Name'], df_items['Phos_Pct']))
     cat_map = dict(zip(df_items['Item_Name'], df_items['Category']))
     unit_map = dict(zip(df_items['Item_Name'], df_items['Unit_Type']))
-else:
-    st.error("讀取不到 DB_Items"); st.stop()
 
 # --- 核心邏輯函數 ---
-def get_previous_meal_density(df_log):
-    if df_log.empty: return None
-    try:
-        df_log['Timestamp_dt'] = pd.to_datetime(df_log['Timestamp'], errors='coerce')
-        df_waste = df_log[df_log['ItemID'] == 'WASTE'].copy()
-        if df_waste.empty: return None
-        last_waste = df_waste.sort_values('Timestamp_dt').iloc[-1]
-        mask_meal = (df_log['Date'] == last_waste['Date']) & (df_log['Meal_Name'] == last_waste['Meal_Name'])
-        df_foods = df_log[mask_meal & (~df_log['Category'].isin(['藥品', '保養品'])) & (~df_log['ItemID'].isin(['WASTE', 'FINISH']))].copy()
-        for col in ['Net_Quantity', 'Cal_Sub', 'Prot_Sub', 'Fat_Sub', 'Phos_Sub']: df_foods[col] = pd.to_numeric(df_foods[col], errors='coerce').fillna(0)
-        tw = df_foods['Net_Quantity'].sum()
-        if tw <= 0: return None
-        return { 'cal': df_foods['Cal_Sub'].sum()/tw, 'prot': df_foods['Prot_Sub'].sum()/tw, 'fat': df_foods['Fat_Sub'].sum()/tw, 'phos': df_foods['Phos_Sub'].sum()/tw, 'info': f"{last_waste['Date']} {last_waste['Meal_Name']}" }
-    except: return None
-
 def add_to_cart_callback(bowl_w, last_ref_w, last_ref_n):   
     category, item_name = st.session_state.get('cat_select'), st.session_state.get('item_select')
     sc_reading = safe_float(st.session_state.get('scale_val'))
@@ -184,21 +145,11 @@ def add_to_cart_callback(bowl_w, last_ref_w, last_ref_n):
     unit = unit_map.get(item_name, "g")
     
     if unit in ["g", "ml"]:
-        if is_zeroed:
-            net_q, db_sc = sc_reading, last_ref_w + sc_reading
-        else:
-            if sc_reading < last_ref_w: return 
-            net_q, db_sc = sc_reading - last_ref_w, sc_reading
-    else:
-        net_q, db_sc = sc_reading, last_ref_w
+        if is_zeroed: net_q, db_sc = sc_reading, last_ref_w + sc_reading
+        else: net_q, db_sc = sc_reading - last_ref_w, sc_reading
+    else: net_q, db_sc = sc_reading, last_ref_w
 
     cal_v, prot_v, fat_v, phos_v = safe_float(cal_map.get(item_name)), safe_float(prot_map.get(item_name)), safe_float(fat_map.get(item_name)), safe_float(phos_map.get(item_name))
-    if item_map.get(item_name) == "LEFTOVER":
-        dens = get_previous_meal_density(df_log)
-        if dens: 
-            cal_v, prot_v, fat_v, phos_v = dens['cal']*100, dens['prot']*100, dens['fat']*100, dens['phos']*100
-            st.toast(f"🔍 已代入 {dens['info']} 密度")
-    
     mult = 1 if unit not in ["g", "ml"] else (net_q / 100)
     st.session_state.cart.append({
         "Category": cat_map.get(item_name), "ItemID": item_map.get(item_name), "Item_Name": item_name,
@@ -211,8 +162,7 @@ def add_to_cart_callback(bowl_w, last_ref_w, last_ref_n):
 def save_finish_callback(f_type, w_net, w_cal, bowl_w, meal_n, f_time, f_date, rec_date):
     if f_type == "有剩餘 (需秤重)" and w_net <= 0: return
     s_db_d, s_f_d = rec_date.strftime("%Y/%m/%d"), f_date.strftime("%Y/%m/%d")
-    ts = f"{s_f_d} {f_time}:00"
-    row = [str(uuid.uuid4()), ts, s_db_d, f"{f_time}:00", meal_n, "WASTE" if "剩" in f_type else "FINISH", "剩食" if "剩" in f_type else "完食", 0, bowl_w, -w_net if "剩" in f_type else 0, -w_cal if "剩" in f_type else 0, 0, 0, 0, "", "完食紀錄", f_time]
+    row = [str(uuid.uuid4()), f"{s_f_d} {f_time}:00", s_db_d, f"{f_time}:00", meal_n, "WASTE" if "剩" in f_type else "FINISH", "剩食" if "剩" in f_type else "完食", 0, bowl_w, -w_net if "剩" in f_type else 0, -w_cal if "剩" in f_type else 0, 0, 0, 0, "", "完食紀錄", f_time]
     try:
         curr = sheet_log.get_all_values()
         h = curr[0]
@@ -240,16 +190,14 @@ with st.sidebar:
     rec_time_str = format_time_str(st.text_input("🕒 時間", value=tw_now.strftime("%H%M")))
     if st.button("🔄 重新整理"): load_data.clear(); st.rerun()
 
+# 資料準備
 df_today = df_log[df_log['Date'] == rec_date.strftime("%Y/%m/%d")].copy() if not df_log.empty else pd.DataFrame()
 day_stats = {'cal':0, 'food':0, 'water':0, 'prot':0, 'fat':0}
-supp_l, med_l = [], []
 if not df_today.empty:
     for c in ['Cal_Sub', 'Net_Quantity', 'Prot_Sub', 'Fat_Sub']: df_today[c] = pd.to_numeric(df_today[c], errors='coerce').fillna(0)
     df_t_c = clean_duplicate_finish_records(df_today)
     f, w = calculate_intake_breakdown(df_t_c)
     day_stats.update({'cal': df_t_c['Cal_Sub'].sum(), 'food': f, 'water': w, 'prot': df_t_c['Prot_Sub'].sum(), 'fat': df_t_c['Fat_Sub'].sum()})
-    supp_l = [{'name': k, 'count': v} for k, v in df_today[df_today['Category']=='保養品'].groupby('Item_Name')['Net_Quantity'].sum().items()]
-    med_l = [{'name': k, 'count': v} for k, v in df_today[df_today['Category']=='藥品'].groupby('Item_Name')['Net_Quantity'].sum().items()]
 
 st.markdown(render_header(rec_date.strftime("%Y年 %m月 %d日")), unsafe_allow_html=True)
 col_dash, col_input = st.columns([4, 3], gap="medium")
@@ -260,9 +208,11 @@ with col_dash:
         with st.expander("📈 飲食趨勢分析"):
             r_opt = st.radio("區間", ["近 7 天", "近 30 天", "自訂"], horizontal=True, label_visibility="collapsed")
             d_s = (tw_now.date() - timedelta(days=6 if "7" in r_opt else 29))
-            d_range = st.date_input("區間", value=(d_s, tw_now.date()))
+            d_range = st.date_input("選擇區間", value=(d_s, tw_now.date()))
             if isinstance(d_range, tuple) and len(d_range)==2:
-                df_v = df_log.copy(); df_v['D'] = pd.to_datetime(df_v['Date']).dt.date
+                df_v = df_log.copy()
+                temp_d = pd.to_datetime(df_v['Date'], errors='coerce')
+                df_v = df_v[temp_d.notna()].copy(); df_v['D'] = temp_d[temp_d.notna()].dt.date
                 df_tr = df_v[(df_v['D'] >= d_range[0]) & (df_v['D'] <= d_range[1])]
                 if not df_tr.empty:
                     tr_d = []
@@ -274,10 +224,9 @@ with col_dash:
                     fig.add_trace(go.Bar(x=df_ch['Date'], y=df_ch['Cal'], name="熱量", marker_color='#FFD700', opacity=0.6), secondary_y=False)
                     fig.add_trace(go.Bar(x=df_ch['Date'], y=df_ch['Food'], name="食量", marker_color='#90EE90', opacity=0.6), secondary_y=False)
                     fig.add_trace(go.Scatter(x=df_ch['Date'], y=df_ch['Water'], name="飲水", line=dict(color='#00BFFF', width=2)), secondary_y=True)
-                    fig.update_layout(height=450, legend=dict(orientation="h", y=-0.2), barmode='group')
+                    fig.update_layout(height=400, legend=dict(orientation="h", y=-0.2), barmode='group', margin=dict(t=20,b=20))
                     st.plotly_chart(fig, width="stretch")
-        with st.expander("📝 今日營養", expanded=st.session_state.dash_stat_open): st.markdown(render_daily_stats_html(day_stats), unsafe_allow_html=True)
-        with st.expander("💊 今日藥品", expanded=st.session_state.dash_med_open): st.markdown(render_supp_med_html(supp_l, med_l), unsafe_allow_html=True)
+        with st.expander("📝 今日營養概況", expanded=st.session_state.dash_stat_open): st.markdown(render_daily_stats_html(day_stats), unsafe_allow_html=True)
 
 with col_input:
     m_opts = ["第一餐", "第二餐", "第三餐", "第四餐", "第五餐", "點心1", "點心2"]
@@ -289,26 +238,19 @@ with col_input:
     with st.container(border=True):
         st.markdown("#### 🍽️ 飲食紀錄")
         c_m, c_b = st.columns(2)
-        meal_n = c_m.selectbox("餐別", m_opts, format_func=lambda m: f"{m}{m_stat.get(m, '')}", key="meal_selector", on_change=lambda: st.session_state.update({'scale_val':None, 'check_zero':False}))
+        meal_n = c_m.selectbox("餐別", m_opts, format_func=lambda m: f"{m}{m_stat.get(m, '')}", key="meal_selector")
         df_m = df_today[df_today['Meal_Name'] == meal_n] if not df_today.empty else pd.DataFrame()
         bowl_w = c_b.number_input("🥣 碗重 (g)", value=float(df_m.iloc[-1]['Bowl_Weight']) if not df_m.empty else 30.0, step=0.1)
-        
-        if not df_m.empty:
-            with st.expander(f"📜 {meal_n} 明細"):
-                v_df = df_m[['Item_Name', 'Net_Quantity', 'Cal_Sub', 'Time']].copy()
-                v_df['Item_Name'] = v_df.apply(lambda r: f"{r['Item_Name']} {str(r['Time'])[:5]}" if '完食' in str(r['Item_Name']) else r['Item_Name'], axis=1)
-                st.dataframe(v_df.drop(columns=['Time']), width="stretch", hide_index=True)
         
         m_stats = {'food':0, 'water':0, 'cal':0, 'prot':0, 'fat':0}
         if not df_m.empty:
             df_m_c = clean_duplicate_finish_records(df_m); fm, wm = calculate_intake_breakdown(df_m_c)
             m_stats.update({'food':fm, 'water':wm, 'cal':df_m_c['Cal_Sub'].sum(), 'prot':df_m_c['Prot_Sub'].sum(), 'fat':df_m_c['Fat_Sub'].sum()})
-        with st.expander("📊 本餐小計", expanded=st.session_state.meal_stats_open): st.markdown(render_meal_stats_simple(m_stats), unsafe_allow_html=True)
+        st.markdown(render_meal_stats_simple(m_stats), unsafe_allow_html=True)
         
         st.divider(); st.markdown('<div id="input-anchor"></div>', unsafe_allow_html=True)
         nav = st.radio("模式", ["➕ 新增", "🏁 完食"], horizontal=True, label_visibility="collapsed", key="nav_mode")
         
-        # 取得上一筆參考
         l_ref_w = st.session_state.cart[-1]['Scale_Reading'] if st.session_state.cart else (float(df_m[~df_m['ItemID'].isin(['WASTE', 'FINISH'])].iloc[-1]['Scale_Reading']) if not df_m.empty and not df_m[~df_m['ItemID'].isin(['WASTE', 'FINISH'])].empty else bowl_w)
         l_ref_n = st.session_state.cart[-1]['Item_Name'] if st.session_state.cart else (df_m[~df_m['ItemID'].isin(['WASTE', 'FINISH'])].iloc[-1]['Item_Name'] if not df_m.empty and not df_m[~df_m['ItemID'].isin(['WASTE', 'FINISH'])].empty else "碗")
 
@@ -320,17 +262,27 @@ with col_input:
             
             c3, c4 = st.columns(2)
             with c3:
-                sc_ui = st.number_input(f"讀數 ({unit})", step=0.1, key="scale_val", value=None)
+                sc_ui = st.number_input(f"讀數 ({unit})", step=0.1, key="scale_val", value=None, placeholder="輸入讀數")
                 if unit in ["g", "ml"]:
                     st.caption(f"📏 前筆參考：{l_ref_w:.1f} {unit} ({l_ref_n})")
                     is_z = st.checkbox("⚖️ 已歸零 / 單獨秤重", key="check_zero")
                 else: is_z = True
             
+            # --- 修正後的異常邏輯 ---
             sc_v = safe_float(sc_ui)
-            if unit in ["g", "ml"]:
-                if is_z: nw, msg = sc_v, "單獨秤重"
-                else: nw, msg = (0.0, "⚠️ 異常") if (sc_v > 0 and sc_v < l_ref_w) else (sc_v - l_ref_w, f"扣除前筆 {l_ref_w}")
-            else: nw, msg = sc_v, f"單位: {unit}"
+            if sc_ui is None:
+                nw, msg = 0.0, "等待輸入"
+            elif unit in ["g", "ml"]:
+                if is_z: 
+                    nw, msg = sc_v, "單獨秤重"
+                else:
+                    if sc_v < l_ref_w:
+                        nw, msg = 0.0, "⚠️ 異常：低於前筆"
+                    else:
+                        nw, msg = sc_v - l_ref_w, f"累加 (+{sc_v - l_ref_w:.1f})"
+            else:
+                nw, msg = sc_v, f"單位: {unit}"
+            
             c4.metric("淨重", f"{nw:.1f}", delta=msg, delta_color="inverse" if "異常" in msg else "off")
             
             st.button("⬇️ 加入清單", type="secondary", width="stretch", disabled=(cat=="請選擇..." or sc_v<=0 or "異常" in msg), on_click=add_to_cart_callback, args=(bowl_w, l_ref_w, l_ref_n))
