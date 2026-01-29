@@ -1,8 +1,8 @@
-# Python 程式碼 V12.4 (2026 Pro Edition)
-# 1. 補回 Dashboard 完整指標圖示與顏色區塊
-# 2. 補回餐點明細表格 (含完食時間拼接)
-# 3. 解決購物車刪除需點兩次的問題
-# 4. 全面符合 2026 Streamlit 規範 (width="stretch")
+# Python 程式碼 V12.5 (2026 Pro Fix)
+# 修正內容：
+# 1. 還原「📝 今日營養攝取」看板
+# 2. 還原餐點明細表格邏輯與「品名、數量、熱量」欄位
+# 3. 2026 Streamlit 語法完全相容 (width="stretch")
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -234,7 +234,7 @@ col_dash, col_input = st.columns([4, 3], gap="medium")
 with col_dash:
     with st.container(border=True):
         st.markdown("#### 📊 本日健康總覽")
-        # 趨勢圖 (保留 V12.3 的強健解析)
+        # 趨勢圖 
         with st.expander("📈 飲食趨勢分析"):
             r_opt = st.radio("區間", ["近 7 天", "近 30 天", "自訂"], horizontal=True, label_visibility="collapsed")
             d_s = (tw_now.date() - timedelta(days=6 if "7" in r_opt else 29))
@@ -257,9 +257,11 @@ with col_dash:
                     fig.update_layout(height=380, legend=dict(orientation="h", y=-0.25, x=0.5, xanchor="center"), barmode='group', margin=dict(t=10,b=20))
                     st.plotly_chart(fig, width="stretch")
         
-        # 今日指標 (修正：補回 HTML 指標顯示)
-        with st.expander("📝 今日營養概況", expanded=st.session_state.dash_stat_open): 
+        # 修正 1: 還原「📝 今日營養攝取」標題與內容
+        with st.expander("📝 今日營養攝取", expanded=st.session_state.dash_stat_open): 
             st.markdown(render_daily_stats_html(day_stats), unsafe_allow_html=True)
+        
+        with st.expander("💊 今日保養與藥品", expanded=st.session_state.dash_med_open):
             st.markdown(render_supp_med_html(supp_l, med_l), unsafe_allow_html=True)
 
 # --- 右欄：飲食紀錄 ---
@@ -277,19 +279,19 @@ with col_input:
         df_m = df_today[df_today['Meal_Name'] == meal_n] if not df_today.empty else pd.DataFrame()
         bowl_w = c_b.number_input("🥣 碗重 (g)", value=float(df_m.iloc[-1]['Bowl_Weight']) if not df_m.empty else 30.0, step=0.1)
         
-        # 修正 2: 補回餐點明細表格
+        # 修正 2: 精確還原查看明細邏輯
         if not df_m.empty:
             with st.expander(f"📜 查看 {meal_n} 已記錄明細"):
                 view_df = df_m[['Item_Name', 'Net_Quantity', 'Cal_Sub', 'Time']].copy()
                 def append_time_to_finish(row):
-                    name_str = str(row['Item_Name'])
-                    if '完食' in name_str or '剩食' in name_str:
-                        t_str = str(row['Time'])[:5]
-                        return f"{name_str} ({t_str})"
-                    return name_str
-                view_df['品名'] = view_df.apply(append_time_to_finish, axis=1)
-                view_df = view_df[['品名', 'Net_Quantity', 'Cal_Sub']]
+                    if '完食' in str(row['Item_Name']):
+                        time_str = str(row['Time'])[:5]
+                        return f"{row['Item_Name']} {time_str}"
+                    return row['Item_Name']
+                view_df['Item_Name'] = view_df.apply(append_time_to_finish, axis=1)
+                view_df = view_df.drop(columns=['Time'])
                 view_df.columns = ['品名', '數量', '熱量']
+                # 這裡使用 width="stretch" 替代舊有的 use_container_width=True
                 st.dataframe(view_df, width="stretch", hide_index=True)
 
         m_stats = {'food':0, 'water':0, 'cal':0, 'prot':0, 'fat':0}
@@ -334,13 +336,13 @@ with col_input:
                 st.markdown("##### 🛒 待存清單")
                 ed_df = st.data_editor(pd.DataFrame(st.session_state.cart), width="stretch", column_config={"Item_Name": "品名", "Net_Quantity": "淨重", "Cal_Sub": "熱量"}, column_order=["Item_Name", "Net_Quantity", "Cal_Sub"], num_rows="fixed")
                 
-                # 修正 3: 解決刪除需點兩次的問題 (優化 Pop 邏輯)
+                # 解決刪除需點兩次的問題
                 del_opts = ["請選擇項目刪除..."] + [f"{i+1}. {r['Item_Name']} ({r['Net_Quantity']})" for i, r in ed_df.iterrows()]
                 del_idx_str = st.selectbox("🗑️ 快速刪除項目", del_opts)
                 if del_idx_str != "請選擇項目刪除..." and st.button("確認刪除", type="secondary"):
                     idx = int(del_idx_str.split(".")[0]) - 1
                     st.session_state.cart.pop(idx)
-                    st.rerun() # 強制刷新確保清單更新
+                    st.rerun() 
 
                 if st.button("💾 儲存寫入 Google Sheet", type="primary", width="stretch"):
                     rows = [[str(uuid.uuid4()), f"{rec_date.strftime('%Y/%m/%d')} {rec_time_str}:00", rec_date.strftime('%Y/%m/%d'), f"{rec_time_str}:00", meal_n, r['ItemID'], r['Category'], r['Scale_Reading'], r['Bowl_Weight'], r['Net_Quantity'], r['Cal_Sub'], r['Prot_Sub'], r['Fat_Sub'], r['Phos_Sub'], "", r['Item_Name'], ""] for _, r in ed_df.iterrows()]
