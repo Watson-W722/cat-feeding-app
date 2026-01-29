@@ -229,7 +229,7 @@ with col_dash:
         with st.expander("📝 今日營養概況", expanded=st.session_state.dash_stat_open): st.markdown(render_daily_stats_html(day_stats), unsafe_allow_html=True)
 
 with col_input:
-    m_opts = ["第一餐", "第二餐", "第三餐", "第四餐", "第五餐", "點心1", "點心2"]
+    m_opts = ["第一餐", "第二餐", "第三餐", "第四餐", "第五餐", "第六餐","第七餐","第八餐","第九餐","第10餐","點心1", "點心2", "點心3"]
     m_stat = {m: " (已記)" for m in (df_today['Meal_Name'].unique() if not df_today.empty else [])}
     if not df_today.empty:
         for _, r in df_today[df_today['ItemID'].isin(['FINISH', 'WASTE'])].iterrows(): m_stat[r['Meal_Name']] = f" (已記) (完食: {str(r['Time'])[:5]})"
