@@ -449,9 +449,22 @@ with col_input:
                 unit = unit_map.get(i_name, "g")
                 c3, c4 = st.columns(2)
                 sc_ui = c3.number_input(f"3. 讀數 ({unit})" if unit != "g" else "3. 秤重讀數 (g)", step=1.0 if unit != "g" else 0.1, format=None if unit != "g" else "%.1f", key="scale_val", value=None, placeholder="輸入")
-                is_z = c3.checkbox("⚖️ 已歸零 / 單獨秤重", value=False, key="check_zero") if unit == "g" else True
+                is_z = c3.checkbox("⚖️ 已歸零 / 單獨秤重", value=False, key="check_zero") if unit in ["g", "ml"] else True
+                
                 sc_val = safe_float(sc_ui)
-                nw, msg = (sc_val, f"單位: {unit}") if unit != "g" else ((sc_val, "單獨秤重") if is_z else ((0.0, "⚠️ 異常") if sc_val < last_ref_w else (sc_val - last_ref_w, f"扣除前筆 {last_ref_w}")))
+                sc_val = safe_float(sc_ui)
+                # 判斷淨重邏輯：如果單位是 g 或 ml，且沒有勾選歸零，則執行相減
+                if unit in ["g", "ml"]:
+                    if is_z:
+                        nw, msg = sc_val, "單獨秤重"
+                    else:
+                        if sc_val < last_ref_w:
+                            nw, msg = 0.0, "⚠️ 異常"
+                        else:
+                            nw, msg = sc_val - last_ref_w, f"扣除前筆 {last_ref_w}"
+                else:
+                    # 藥品、保養品（顆、次）維持直接輸入
+                    nw, msg = sc_val, f"單位: {unit}"
                 c4.metric("淨重", f"{nw:.1f}", delta=msg, delta_color="inverse" if "異常" in msg else "off")
                 # [2026 Fix] use_container_width=True -> width="stretch"
                 st.button("⬇️ 加入清單", type="secondary", width="stretch", disabled=(f_cat=="請選擇..." or i_name=="請先選類別" or sc_val<=0 or "異常" in msg), on_click=add_to_cart_callback, args=(bowl_weight, last_ref_w, last_ref_n))
