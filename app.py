@@ -1,9 +1,8 @@
-# Python 程式碼 V12.3 (2026 Final Stability Edition)
-# 修正內容：
-# 1. 修正 ↑異常 邏輯：僅在「已輸入讀數」且「低於前筆」時顯示異常，平時顯示「等待輸入」。
-# 2. 修正 DateParseError：強化趨勢圖的日期解析，忽略無效日期列。
-# 3. 2026 語法相容：全面使用 width="stretch"。
-# 4. 水 (ml) 累加支援：補回參考讀數提示與歸零勾選框。
+# Python 程式碼 V12.4 (2026 Pro Edition)
+# 1. 補回 Dashboard 完整指標圖示與顏色區塊
+# 2. 補回餐點明細表格 (含完食時間拼接)
+# 3. 解決購物車刪除需點兩次的問題
+# 4. 全面符合 2026 Streamlit 規範 (width="stretch")
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -66,7 +65,7 @@ def calculate_intake_breakdown(df):
     ratio_food = input_food / total_input if total_input > 0 else 1.0
     return input_food + (total_waste * ratio_food), input_water + (total_waste * ratio_water)
 
-# CSS 注入 (簡約版)
+# --- CSS 注入 ---
 def inject_custom_css():
     st.markdown("""
     <style>
@@ -74,14 +73,28 @@ def inject_custom_css():
         .stApp { background-color: var(--bg); font-family: 'Segoe UI', sans-serif; color: var(--navy); }
         .stMarkdown, .stRadio label, .stNumberInput label, .stSelectbox label, .stTextInput label, p, h1, h2, h3, h4, h5, h6, span, div { color: var(--navy) !important; }
         div[data-testid="stVerticalBlock"] > div[style*="background-color"] { background: white; border-radius: 16px; border: 1px solid rgba(1,33,114,0.1); padding: 24px; }
-        .stat-item { background: #fff; border: 2px solid #e2e8f0; border-radius: 12px; padding: 16px 12px; display: flex; flex-direction: column; align-items: center; }
-        .stat-header { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; font-size: 14px; font-weight: 700; color: var(--text-muted) !important; }
-        .stat-value { font-size: 32px; font-weight: 900; color: var(--navy) !important; line-height: 1.1; }
+        /* Dashboard 指標樣式 */
+        .stat-item { background: #fff; border: 2px solid #e2e8f0; border-radius: 12px; padding: 16px 12px; display: flex; flex-direction: column; align-items: center; text-align: center; }
+        .stat-header { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; font-size: 14px; font-weight: 700; color: var(--text-muted) !important; text-transform: uppercase; }
+        .stat-value { font-size: 30px; font-weight: 900; color: var(--navy) !important; line-height: 1.1; }
+        .stat-unit { font-size: 14px; font-weight: 600; color: var(--text-muted) !important; margin-left: 2px; }
         .grid-row-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px; }
         .grid-row-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 0px; }
-        .simple-grid { display: grid; grid-template-columns: repeat(5, 1fr); background: #FDFDF9; border: 1px solid var(--beige); border-radius: 12px; padding: 10px 0; margin-bottom: 15px; }
+        .bg-orange { background: #fff7ed; color: #f97316; padding: 4px; border-radius: 6px; }
+        .bg-blue { background: #eff6ff; color: #3b82f6; padding: 4px; border-radius: 6px; }
+        .bg-cyan { background: #ecfeff; color: #06b6d4; padding: 4px; border-radius: 6px; }
+        .bg-red { background: #fef2f2; color: #ef4444; padding: 4px; border-radius: 6px; }
+        .bg-yellow { background: #fefce8; color: #eab308; padding: 4px; border-radius: 6px; }
+        /* Tag 樣式 */
+        .tag-container { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+        .tag { display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 8px; font-size: 13px; font-weight: 600; }
+        .tag-green { background: #ecfdf5; border: 1px solid #d1fae5; color: #047857 !important; }
+        .tag-red { background: #fff1f2; border: 1px solid #ffe4e6; color: #be123c !important; }
+        .tag-count { background: rgba(255,255,255,0.8); padding: 0px 4px; border-radius: 4px; margin-left: 4px; }
+        /* 小計 Grid */
+        .simple-grid { display: grid; grid-template-columns: repeat(5, 1fr); background: #FDFDF9; border: 1px solid var(--beige); border-radius: 12px; padding: 10px 0; margin-bottom: 15px; width: 100%; }
         .simple-item { text-align: center; border-right: 1px solid rgba(1, 33, 114, 0.1); }
-        .tag { display: inline-flex; align-items: center; padding: 6px 12px; border-radius: 8px; font-size: 14px; font-weight: 600; }
+        .simple-item:last-child { border-right: none; }
         .main-header { display: flex; align-items: center; gap: 12px; margin-top: 5px; margin-bottom: 24px; padding: 20px; background: white; border-radius: 16px; border: 1px solid rgba(1, 33, 114, 0.1); }
         .header-icon { background: var(--navy); padding: 12px; border-radius: 12px; color: white !important; display: flex; }
     </style>
@@ -93,9 +106,18 @@ def render_header(date_str):
 
 def render_daily_stats_html(day_stats):
     def get_stat_html(label, value, unit, color_class):
-        return f'<div class="stat-item"><div class="stat-header">{label}</div><div style="display:flex; align-items:baseline;"><span class="stat-value">{value}</span><span style="font-size:14px; margin-left:2px;">{unit}</span></div></div>'
+        return f'<div class="stat-item"><div class="stat-header {color_class}">{label}</div><div style="display:flex; align-items:baseline;"><span class="stat-value">{value}</span><span class="stat-unit">{unit}</span></div></div>'
     html = '<div class="grid-row-3">' + get_stat_html("熱量", int(day_stats['cal']), "kcal", "bg-orange") + get_stat_html("食物", f"{day_stats['food']:.1f}", "g", "bg-blue") + get_stat_html("飲水", f"{day_stats['water']:.1f}", "ml", "bg-cyan") + '</div>'
     html += '<div class="grid-row-2">' + get_stat_html("蛋白質", f"{day_stats['prot']:.1f}", "g", "bg-red") + get_stat_html("脂肪", f"{day_stats['fat']:.1f}", "g", "bg-yellow") + '</div>'
+    return html
+
+def render_supp_med_html(supp_list, med_list):
+    def get_tag_html(items, type_class):
+        if not items: return '<span style="color:#5A6B8C; font-size:13px;">無</span>'
+        return "".join([f'<span class="tag {type_class}">{item["name"]}<span class="tag-count">x{int(item["count"])}</span></span>' for item in items])
+    html = '<div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px; margin-top:10px;">'
+    html += f'<div><div style="font-size:12px;font-weight:700;color:#047857;margin-bottom:4px;">保養品</div><div class="tag-container">{get_tag_html(supp_list, "tag-green")}</div></div>'
+    html += f'<div style="border-left:1px solid #f1f5f9;padding-left:20px;"><div><div style="font-size:12px;font-weight:700;color:#be123c;margin-bottom:4px;">藥品</div><div class="tag-container">{get_tag_html(med_list, "tag-red")}</div></div></div></div>'
     return html
 
 def render_meal_stats_simple(meal_stats):
@@ -190,25 +212,33 @@ with st.sidebar:
     rec_time_str = format_time_str(st.text_input("🕒 時間", value=tw_now.strftime("%H%M")))
     if st.button("🔄 重新整理"): load_data.clear(); st.rerun()
 
-# 資料準備
+# --- Dashboard 數據處理 ---
 df_today = df_log[df_log['Date'] == rec_date.strftime("%Y/%m/%d")].copy() if not df_log.empty else pd.DataFrame()
 day_stats = {'cal':0, 'food':0, 'water':0, 'prot':0, 'fat':0}
+supp_l, med_l = [], []
 if not df_today.empty:
     for c in ['Cal_Sub', 'Net_Quantity', 'Prot_Sub', 'Fat_Sub']: df_today[c] = pd.to_numeric(df_today[c], errors='coerce').fillna(0)
     df_t_c = clean_duplicate_finish_records(df_today)
     f, w = calculate_intake_breakdown(df_t_c)
     day_stats.update({'cal': df_t_c['Cal_Sub'].sum(), 'food': f, 'water': w, 'prot': df_t_c['Prot_Sub'].sum(), 'fat': df_t_c['Fat_Sub'].sum()})
+    # 保養品與藥品
+    df_supp = df_today[df_today['Category'] == '保養品']
+    if not df_supp.empty: supp_l = [{'name': k, 'count': v} for k, v in df_supp.groupby('Item_Name')['Net_Quantity'].sum().items()]
+    df_med = df_today[df_today['Category'] == '藥品']
+    if not df_med.empty: med_l = [{'name': k, 'count': v} for k, v in df_med.groupby('Item_Name')['Net_Quantity'].sum().items()]
 
 st.markdown(render_header(rec_date.strftime("%Y年 %m月 %d日")), unsafe_allow_html=True)
 col_dash, col_input = st.columns([4, 3], gap="medium")
 
+# --- 左欄：Dashboard ---
 with col_dash:
     with st.container(border=True):
         st.markdown("#### 📊 本日健康總覽")
+        # 趨勢圖 (保留 V12.3 的強健解析)
         with st.expander("📈 飲食趨勢分析"):
             r_opt = st.radio("區間", ["近 7 天", "近 30 天", "自訂"], horizontal=True, label_visibility="collapsed")
             d_s = (tw_now.date() - timedelta(days=6 if "7" in r_opt else 29))
-            d_range = st.date_input("選擇區間", value=(d_s, tw_now.date()))
+            d_range = st.date_input("選擇日期區間", value=(d_s, tw_now.date()))
             if isinstance(d_range, tuple) and len(d_range)==2:
                 df_v = df_log.copy()
                 temp_d = pd.to_datetime(df_v['Date'], errors='coerce')
@@ -224,12 +254,17 @@ with col_dash:
                     fig.add_trace(go.Bar(x=df_ch['Date'], y=df_ch['Cal'], name="熱量", marker_color='#FFD700', opacity=0.6), secondary_y=False)
                     fig.add_trace(go.Bar(x=df_ch['Date'], y=df_ch['Food'], name="食量", marker_color='#90EE90', opacity=0.6), secondary_y=False)
                     fig.add_trace(go.Scatter(x=df_ch['Date'], y=df_ch['Water'], name="飲水", line=dict(color='#00BFFF', width=2)), secondary_y=True)
-                    fig.update_layout(height=400, legend=dict(orientation="h", y=-0.2), barmode='group', margin=dict(t=20,b=20))
+                    fig.update_layout(height=380, legend=dict(orientation="h", y=-0.25, x=0.5, xanchor="center"), barmode='group', margin=dict(t=10,b=20))
                     st.plotly_chart(fig, width="stretch")
-        with st.expander("📝 今日營養概況", expanded=st.session_state.dash_stat_open): st.markdown(render_daily_stats_html(day_stats), unsafe_allow_html=True)
+        
+        # 今日指標 (修正：補回 HTML 指標顯示)
+        with st.expander("📝 今日營養概況", expanded=st.session_state.dash_stat_open): 
+            st.markdown(render_daily_stats_html(day_stats), unsafe_allow_html=True)
+            st.markdown(render_supp_med_html(supp_l, med_l), unsafe_allow_html=True)
 
+# --- 右欄：飲食紀錄 ---
 with col_input:
-    m_opts = ["第一餐", "第二餐", "第三餐", "第四餐", "第五餐", "第六餐","第七餐","第八餐","第九餐","第10餐","點心1", "點心2", "點心3"]
+    m_opts = ["第一餐", "第二餐", "第三餐", "第四餐", "第五餐", "第六餐", "第七餐", "第八餐", "第九餐", "第十餐", "點心1", "點心2", "點心3"]
     m_stat = {m: " (已記)" for m in (df_today['Meal_Name'].unique() if not df_today.empty else [])}
     if not df_today.empty:
         for _, r in df_today[df_today['ItemID'].isin(['FINISH', 'WASTE'])].iterrows(): m_stat[r['Meal_Name']] = f" (已記) (完食: {str(r['Time'])[:5]})"
@@ -242,11 +277,28 @@ with col_input:
         df_m = df_today[df_today['Meal_Name'] == meal_n] if not df_today.empty else pd.DataFrame()
         bowl_w = c_b.number_input("🥣 碗重 (g)", value=float(df_m.iloc[-1]['Bowl_Weight']) if not df_m.empty else 30.0, step=0.1)
         
+        # 修正 2: 補回餐點明細表格
+        if not df_m.empty:
+            with st.expander(f"📜 查看 {meal_n} 已記錄明細"):
+                view_df = df_m[['Item_Name', 'Net_Quantity', 'Cal_Sub', 'Time']].copy()
+                def append_time_to_finish(row):
+                    name_str = str(row['Item_Name'])
+                    if '完食' in name_str or '剩食' in name_str:
+                        t_str = str(row['Time'])[:5]
+                        return f"{name_str} ({t_str})"
+                    return name_str
+                view_df['品名'] = view_df.apply(append_time_to_finish, axis=1)
+                view_df = view_df[['品名', 'Net_Quantity', 'Cal_Sub']]
+                view_df.columns = ['品名', '數量', '熱量']
+                st.dataframe(view_df, width="stretch", hide_index=True)
+
         m_stats = {'food':0, 'water':0, 'cal':0, 'prot':0, 'fat':0}
         if not df_m.empty:
             df_m_c = clean_duplicate_finish_records(df_m); fm, wm = calculate_intake_breakdown(df_m_c)
             m_stats.update({'food':fm, 'water':wm, 'cal':df_m_c['Cal_Sub'].sum(), 'prot':df_m_c['Prot_Sub'].sum(), 'fat':df_m_c['Fat_Sub'].sum()})
-        st.markdown(render_meal_stats_simple(m_stats), unsafe_allow_html=True)
+        
+        with st.expander("📊 本餐營養小計", expanded=st.session_state.meal_stats_open):
+            st.markdown(render_meal_stats_simple(m_stats), unsafe_allow_html=True)
         
         st.divider(); st.markdown('<div id="input-anchor"></div>', unsafe_allow_html=True)
         nav = st.radio("模式", ["➕ 新增", "🏁 完食"], horizontal=True, label_visibility="collapsed", key="nav_mode")
@@ -268,38 +320,39 @@ with col_input:
                     is_z = st.checkbox("⚖️ 已歸零 / 單獨秤重", key="check_zero")
                 else: is_z = True
             
-            # --- 修正後的異常邏輯 ---
             sc_v = safe_float(sc_ui)
-            if sc_ui is None:
-                nw, msg = 0.0, "等待輸入"
+            if sc_ui is None: nw, msg = 0.0, "等待輸入"
             elif unit in ["g", "ml"]:
-                if is_z: 
-                    nw, msg = sc_v, "單獨秤重"
-                else:
-                    if sc_v < l_ref_w:
-                        nw, msg = 0.0, "⚠️ 異常：低於前筆"
-                    else:
-                        nw, msg = sc_v - l_ref_w, f"累加 (+{sc_v - l_ref_w:.1f})"
-            else:
-                nw, msg = sc_v, f"單位: {unit}"
-            
+                if is_z: nw, msg = sc_v, "單獨秤重"
+                else: nw, msg = (0.0, "⚠️ 異常：低於前筆") if (sc_v < l_ref_w) else (sc_v - l_ref_w, f"累加 (+{sc_v - l_ref_w:.1f})")
+            else: nw, msg = sc_v, f"單位: {unit}"
             c4.metric("淨重", f"{nw:.1f}", delta=msg, delta_color="inverse" if "異常" in msg else "off")
             
             st.button("⬇️ 加入清單", type="secondary", width="stretch", disabled=(cat=="請選擇..." or sc_v<=0 or "異常" in msg), on_click=add_to_cart_callback, args=(bowl_w, l_ref_w, l_ref_n))
             
             if st.session_state.cart:
+                st.markdown("##### 🛒 待存清單")
                 ed_df = st.data_editor(pd.DataFrame(st.session_state.cart), width="stretch", column_config={"Item_Name": "品名", "Net_Quantity": "淨重", "Cal_Sub": "熱量"}, column_order=["Item_Name", "Net_Quantity", "Cal_Sub"], num_rows="fixed")
-                if st.button("💾 儲存寫入", type="primary", width="stretch"):
+                
+                # 修正 3: 解決刪除需點兩次的問題 (優化 Pop 邏輯)
+                del_opts = ["請選擇項目刪除..."] + [f"{i+1}. {r['Item_Name']} ({r['Net_Quantity']})" for i, r in ed_df.iterrows()]
+                del_idx_str = st.selectbox("🗑️ 快速刪除項目", del_opts)
+                if del_idx_str != "請選擇項目刪除..." and st.button("確認刪除", type="secondary"):
+                    idx = int(del_idx_str.split(".")[0]) - 1
+                    st.session_state.cart.pop(idx)
+                    st.rerun() # 強制刷新確保清單更新
+
+                if st.button("💾 儲存寫入 Google Sheet", type="primary", width="stretch"):
                     rows = [[str(uuid.uuid4()), f"{rec_date.strftime('%Y/%m/%d')} {rec_time_str}:00", rec_date.strftime('%Y/%m/%d'), f"{rec_time_str}:00", meal_n, r['ItemID'], r['Category'], r['Scale_Reading'], r['Bowl_Weight'], r['Net_Quantity'], r['Cal_Sub'], r['Prot_Sub'], r['Fat_Sub'], r['Phos_Sub'], "", r['Item_Name'], ""] for _, r in ed_df.iterrows()]
-                    sheet_log.append_rows(rows); st.toast("✅ 成功"); st.session_state.cart = []; load_data.clear(); st.session_state.just_saved = True; st.rerun()
+                    sheet_log.append_rows(rows); st.toast("✅ 儲存成功"); st.session_state.cart = []; load_data.clear(); st.session_state.just_saved = True; st.rerun()
 
         elif nav == "🏁 完食":
             f_d = st.date_input("完食日期", value=rec_date); f_t = format_time_str(st.text_input("時間", value=get_tw_time().strftime("%H%M")))
-            f_ty = st.radio("狀態", ["全部吃光", "有剩餘"], horizontal=True)
+            f_ty = st.radio("狀態", ["全部吃光 (盤光光)", "有剩餘 (需秤重)"], horizontal=True)
             wn, wc = 0.0, 0.0
             if "剩" in f_ty:
                 cw1, cw2 = st.columns(2)
-                vg, vt = safe_float(cw1.number_input("總重")), safe_float(cw2.number_input("容器重"))
+                vg, vt = safe_float(cw1.number_input("總重 (容器+剩食)")), safe_float(cw2.number_input("容器重"))
                 wn = vg - vt
                 if wn > 0 and not df_m.empty:
                     calc = df_m[(~df_m['Category'].isin(['藥品','保養品'])) & (df_m['Net_Quantity']>0)]
